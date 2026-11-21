@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.295 (b781: V-12 — Codex #632: retirada prova o produto, nao o pedido; falha das operacoes vira motivo)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.296 (b782: T-02 — o app contra o PostgREST real; UPDATE sem .limit (PGRST109 no PostgREST 12))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6975,7 +6975,7 @@ app.put('/api/admin/recado/:id', requerAdmin, async (req, res) => {
     // OUTRA instrucao.
     campos.ciente_em = null;
     campos.ciente_por = null;
-    const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select().limit(1);
+    const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select();   // b782 (T-02): sem .limit — PostgREST 12 recusa UPDATE com limit sem order (PGRST109); o filtro por id ja e unico
     if (error) return res.status(400).json({ ok: false, erro: error.message });
     return res.json({ ok: true, recado: (data || [])[0] || null });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }

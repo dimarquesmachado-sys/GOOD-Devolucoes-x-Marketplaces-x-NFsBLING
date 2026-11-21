@@ -106,7 +106,7 @@ async function subirPostgres({ comSchema = true } = {}) {
     sql(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;`);
     if (comSchema) sql(ddlDoSchema(JSON.parse(fs.readFileSync(SCHEMA, 'utf8'))));
   } catch (e) { parar(); throw e; }
-  return { sql, parar, porta, ddlDoSchema };
+  return { sql, parar, porta, sock, ddlDoSchema };   // b782: o socket vai junto (o PostgREST de verdade conecta por ele)
 }
 
 module.exports = { subirPostgres, ddlDoSchema, SCHEMA };
