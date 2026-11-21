@@ -44,6 +44,34 @@ ok(refs('R. 1D: 48126024340123', '').length === 0 && refs('R. 1D: 481260243', ''
 ok(refs('RIO 21999998888', '').join() === '21999998888', '⚠️ "RIO 21999998888" NAO e lido como rotulo (sem nada separando o R do "ID" e sem os dois pontos)');
 ok(refs('BAIRRO 1D: 48126024340', '').join() === REF, '  nem um "R" no meio de outra palavra');
 
+console.log('\n── 1b. (b791, Codex #638) o numero pode ter sido lido pela METADE: so o lido INTEIRO e SOZINHO e "certo"');
+{
+  // * = leu o rotulo; ? = NAO e certo (a tela pergunta em vez de buscar sozinha)
+  const lidos = (texto, ja) => api.candidatosRefId(texto, ja).map((c) => c.valor + (c.rotulado ? '*' : '') + (c.certo === true ? '' : '?')).join(' ');
+  ok(lidos(OCR_REAL, BARRAS) === REF + '*', '⚠️ o texto MEDIDO na foto real: uma leitura, certa — ' + lidos(OCR_REAL, BARRAS));
+  ok(lidos('REF. ID: 481260 24340') === REF + '*', '  partido no meio (6 + 5): so pode ser o de 11 digitos — uma leitura, certa');
+  ok(lidos('REF. ID: 48126 0243 40') === REF + '*', '  partido em TRES pedacos: idem (antes nem achava)');
+  ok(lidos('REF. ID: 4812602434 0') === '4812602434*? 48126024340*?',
+    '⚠️ partido depois do 10o digito ("4812602434 0"): DUAS leituras, nenhuma certa — o ultimo digito nao e jogado fora (antes: buscava 4812602434, OUTRO envio) — ' + lidos('REF. ID: 4812602434 0'));
+  ok(lidos('REF. ID: 48126024340 12') === '48126024340*? 4812602434012*?', '⚠️ e o contrario (numero inteiro + um pedaco curto ao lado): tambem duas leituras — nao gruda sozinho');
+  ok(lidos('REF. ID: 1 48126024340') === '148126024340*? 48126024340*?', '  um digito solto ANTES do numero (os dois pontos lidos como 1): duas leituras');
+  ok(lidos('REF. ID: 48126024340 12345') === REF + '*' && lidos('REF. ID: 48126024340 123456789') === REF + '*',
+    '⚠️ vizinho que nao cabe num numero de envio (daria 16 ou 20 digitos) nao cria duvida — e o pedaco vizinho nunca e cortado no meio');
+  ok(lidos('REF. ID: 481  260  243  405555') === '', '  (o leitor de numero para num pedaco INTEIRO: nao corta "405555" em "405" pra fechar um numero de 12 digitos que nao existe)');
+  ok(lidos('R. 1D: 4812602434O') === '4812602434*?', '⚠️ letra GRUDADA no fim do numero (um digito que o leitor trocou por letra?): nao e certo — ' + lidos('R. 1D: 4812602434O'));
+  ok(lidos('R. 1D: 48126024340 SP') === REF + '*' && lidos('R. 1D: 48126024340.') === REF + '*', '  letra separada por espaco, ou pontuacao no fim: certo');
+  ok(lidos('MELI\n48126024340\n481332 97953', BARRAS) === REF, '⚠️ numero solto, sozinho na linha: certo (pelo cartao, continua indo direto)');
+  ok(lidos('MELI\n48126024340\n481332 97953') === REF, '⚠️ numero partido que nao tem NENHUM pedaco com tamanho de envio (o do codigo de barras, "481332 97953") nao e oferecido — como antes');
+  ok(lidos('MELI\n4812602434 0') === '4812602434? 48126024340?', '⚠️ solto e partido depois do 10o digito: as duas leituras, nenhuma certa');
+  ok(lidos('MELI\n4 8126024340') === '48126024340? 8126024340?', '  solto e partido no comeco: idem');
+  ok(lidos('BR264131066541Q') === '264131066541?' && lidos('X48126024340') === '48126024340?', '⚠️ numero com letra grudada (um rastreio da Shopee, por exemplo): nao e certo');
+  ok(lidos('MELI\n481332 97953\n48133297953 7\n48126024340', BARRAS) === REF, '⚠️ o codigo ja tentado nao volta — nem inteiro, nem partido, nem com um pedaco grudado nele');
+  ok(lidos('48126024340 48133297958') === '48126024340 48133297958', '  dois numeros inteiros na mesma linha: os dois, cada um certo (a tela pergunta porque sao DOIS)');
+  ok(api.candidatosRefId('REF. ID: 48126024340', '').every((c) => c.certo === true) && api.candidatosRefId('MELI\n48126024340', '').every((c) => c.certo === true), '  `certo` vem sempre como verdadeiro/falso (a tela trata "falso" como duvida)');
+  const geral = api.candidatos('G MELI AO\nREF. ID: 4812602434 0\nXSP16');
+  ok(geral.length === 2 && geral.every((c) => c.certo === false), '⚠️ na leitura geral da foto entram as DUAS leituras do numero partido (sao duas: a tela pergunta)');
+}
+
 console.log('\n── 2. sem o rotulo: os numeros soltos, menos o codigo que ja foi tentado');
 ok(refs('MELI\n48126024340\n481332 97953', BARRAS).join() === REF, '⚠️ rotulo ilegivel e UM numero de envio na etiqueta → e ele');
 ok(refs('MELI\n48126024340\n48133297953', BARRAS).join() === REF, '⚠️ o codigo de barras ja tentado (aqui lido inteiro) NAO volta como candidato');
@@ -91,8 +119,8 @@ console.log('\n── 5. a tela nova chega no navegador (as 3 empresas carregam 
 {
   const good = ler('public/index.html'), fab = ler('amb-devolucoes/public-AMB/index-AMB.html');
   const n = (re, s) => Number((s.match(re) || [])[1]) || 0;
-  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4795 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4796, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; o colar-imagem.js mudou de novo no b790)');
-  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 789 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 790, '⚠️ fabrica: idem');
+  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4795 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4797, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; o colar-imagem.js mudou de novo no b790 e no b791)');
+  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 789 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 791, '⚠️ fabrica: idem');
   for (const [nome, html] of [['GOOD', good], ['fabrica', fab]]) {
     const cola = entreMarcadores(html, 'id="modalColaBipe"', 'SHOPEE</div>');
     ok(/SEM nome de cliente/.test(cola) && /Ref\. ID/.test(cola) && /pacote MELI/.test(cola), '  ' + nome + ': a colinha "O que bipar" explica o pacote MELI e o Ref. ID');

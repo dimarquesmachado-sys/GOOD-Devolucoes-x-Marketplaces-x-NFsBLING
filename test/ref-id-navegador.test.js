@@ -497,6 +497,58 @@ const venda = (codigo) => ({
       presa.codigo = null;
       await leitores({ __qr: null, __ocr: OCR_REAL, __ocrMs: 0, __ocrManual: false, __ocrFila: [] });
 
+      // 8.4 — (b791, 2a rodada do Codex) ele comecou a digitar o Ref. ID NO CARTAO enquanto a foto era lida: a leitura
+      // nao leva o cartao embora com o que ele esta digitando
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrManual: true, __ocrFila: [] });
+      await fotoPeloCartao();
+      await page.fill('#inputRefId', '4812');
+      await terminarLeitura();
+      ok(buscados.length === de && (await temCartao()) === 1 && (await page.inputValue('#inputRefId')) === '4812' && (await lendoNoCartao()) === '' && await zonaSumiu(),
+        '⚠️ foto do cartao em leitura + comecou a DIGITAR o Ref. ID no cartao: a leitura nao busca nem leva o cartao embora — o que ele digitou continua la');
+      await page.fill('#inputRefId', NA_MAO); await page.press('#inputRefId', 'Enter');
+      await esperarVenda(NA_MAO);
+      ok(buscados.length === de + 1 && buscados[buscados.length - 1] === NA_MAO, '  terminou de digitar + Enter: busca o que ELE digitou');
+      de = buscados.length; await leitores({ __ocrFila: [] });
+      await soltarFoto();
+      await leituraAutomaticaPendente();
+      await page.fill('#inputRefId', '4812');
+      await terminarLeitura();
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR]) && (await temCartao()) === 1 && (await page.inputValue('#inputRefId')) === '4812' && (await lendoNoCartao()) === '' && await zonaSumiu(),
+        '⚠️ leitura automatica em andamento + comecou a digitar no cartao: idem');
+      await leitores({ __qr: null, __ocr: OCR_REAL, __ocrMs: 0, __ocrManual: false, __ocrFila: [] });
+
+      // ══ 9. (b791, Codex #638) o numero lido pela METADE nao e buscado sozinho ══
+      // o leitor partiu o numero depois do 10o digito: "4812602434 0" pode ser o de 10 ou o de 11 — a tela pergunta
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __ocr: 'G MELI AO\nREF. ID: 4812602434 0\nXSP16' });
+      await page.setInputFiles('#arquivoRefId', { name: 'partido.png', mimeType: 'image/png', buffer: PNG });
+      await page.waitForSelector('#zonaColarOpcoes button', { timeout: 8000 });
+      await page.waitForTimeout(400);
+      const leiturasNaTela = await page.$$eval('#zonaColarOpcoes button b', (els) => els.map((el) => el.textContent));
+      ok(buscados.length === de && JSON.stringify(leiturasNaTela) === JSON.stringify(['4812602434', REF]) && /mais de um número/.test(await lendoNoCartao()),
+        '⚠️ Ref. ID partido depois do 10o digito: NADA e buscado sozinho — a tela mostra as duas leituras (' + leiturasNaTela.join(' / ') + ') pra bater com a etiqueta');
+      await page.click('#zonaColarOpcoes button:nth-child(2)');
+      await esperarVenda(REF);
+      ok(buscados.length === de + 1 && buscados[buscados.length - 1] === REF && (await avisoLido()).includes(REF), '  tocou na leitura de 11 digitos: busca e acha (com o aviso do numero lido)');
+      // uma letra grudada no fim do numero (digito que o leitor trocou?): um numero so, mas nao e certo — pergunta
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __ocr: 'G MELI AO\nR. 1D: 4812602434O\nXSP16' });
+      await page.setInputFiles('#arquivoRefId', { name: 'letra.png', mimeType: 'image/png', buffer: PNG });
+      await page.waitForSelector('#zonaColarOpcoes button', { timeout: 8000 });
+      await page.waitForTimeout(400);
+      ok(buscados.length === de && (await page.$$('#zonaColarOpcoes button')).length === 1 && /talvez não inteiro/.test(await lendoNoCartao()) && (await temCartao()) === 1,
+        '⚠️ numero com letra grudada no fim (pelo cartao): um so, mas NAO e buscado sozinho — a tela diz que talvez nao esteja inteiro e deixa o campo pra digitar');
+      // o mesmo pela imagem comum (sem QR legivel): a leitura geral tambem nao busca sozinha o numero duvidoso
+      await page.fill('#codigo', '');
+      de = buscados.length; await leitores({ __qr: null, __ocr: 'G MELI AO\nR. 1D: 4812602434O\nXSP16' });
+      await soltarFoto();
+      await page.waitForSelector('#zonaColarOpcoes button', { timeout: 8000 });
+      await page.waitForTimeout(400);
+      ok(buscados.length === de && (await page.$$('#zonaColarOpcoes button')).length === 1 && (await campo()) === '',
+        '⚠️ idem pela imagem comum ("anexar"): o numero duvidoso vira pergunta, nao vai sozinho pro campo nem pra busca');
+      await leitores({ __qr: null, __ocr: OCR_REAL, __ocrMs: 0, __ocrManual: false, __ocrFila: [] });
+
       ok(errosJs.length === 0, '  sem erro de JS' + (errosJs.length ? ': ' + errosJs.slice(0, 3).join(' | ') : ''));
       ok(retiroPedidos > 0, '  (a lista do retiro continuou sendo consultada nos "nao encontrado": ' + retiroPedidos + ')');
       await ctx.close();
