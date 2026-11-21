@@ -110,6 +110,16 @@ const RAIZ = path.join(__dirname, '..');
   ok(/registrarHospedeira\(\{ chave: 'good'/.test(srv) && /app\.use\(freioDaHospedeira\(\{/.test(srv),
      '  o server registra a hospedeira e instala o freio na montagem');
   ok(/const GOOD_DESLIGADA = _freadaEmpresa\('good'\);/.test(srv), '  e o interruptor vem do MESMO freada() das outras empresas');
+  // b775 (Codex #628): o backup e GLOBAL (as 3 empresas) — com a GOOD desligada, o endpoint de estado/disparo tem que
+  // passar pelo freio. Le a allowlist REAL do server.js e roda o middleware de producao com ela.
+  const lista = /caminhosDoServico: \[([\s\S]*?)\]/.exec(srv);
+  ok(lista, '  achei a allowlist caminhosDoServico no server.js');
+  const caminhos = [...lista[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const { freioDaHospedeira: freioReal } = require('../lib/montagem-empresas');
+  const f = freioReal({ chave: 'good', rotasAtivas: ['/amb', '/girassol'], caminhosDoServico: caminhos, raiz: '/girassol' });
+  const passa = (p) => { let n = false; f({ path: p, method: 'GET', headers: { accept: 'application/json' } }, { status() { return this; }, type() { return this; }, send() {}, json() {}, redirect() {} }, () => { n = true; }); return n; };
+  ok(passa('/api/admin/backup') && passa('/api/admin/backup?rodar=1'.split('?')[0]) && passa('/api/admin/sonda-empresa/good'), '⚠️ com a GOOD desligada, /api/admin/backup (global) passa pelo freio, como a sonda');
+  ok(!passa('/api/admin/devolucoes'), '  e uma rota admin SO da GOOD continua fechada');
 }
 
 // ── 3. boot real ────────────────────────────────────────────────────

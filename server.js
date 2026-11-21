@@ -427,7 +427,7 @@ app.post(seguranca.ROTA_RELATO, express.json({ type: ['application/csp-report', 
       chave: 'good',
       rotasAtivas: ativas.map((e) => e.rota),
       caminhosDoServico: ['/health', '/api/keepalive', '/api/interno', '/api/admin/eventos-checkout',
-        '/api/admin/sonda-empresa', '/politica-de-privacidade', '/termos-de-uso'],
+        '/api/admin/sonda-empresa', '/api/admin/backup', '/politica-de-privacidade', '/termos-de-uso'],
       raiz: String(process.env.DEVOLUCOES_RAIZ || '').trim(),
     }));
   }
@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.288 (b774: V-04 — ensaio real do backup: tabelas sem coluna id (espreita, depara, tags) pela propria chave)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.290 (b776: V-04 — backup diario: retencao so de rodada completa, dia lido do Storage)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -691,6 +691,7 @@ app.get('/health', (req, res) => {
       montagem_empresas: require('./lib/montagem-empresas').diagnostico(),
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
+      backup: backupRotina.diagnostico(),
       admin_key: diagnosticoAdminKey(),
       // b268 - ⚠️ O ESTADO DO INDICE DE NOMES nao estava exposto em lugar
       // nenhum, e e ele que decide se a busca do estoquista responde na
@@ -2638,6 +2639,32 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
 //
 // ⚠️ Protegida pela chave admin, como as outras sondas. E continua SO
 // LEITURA: nao emite, nao grava, nao renova, nao ativa.
+// b775 (V-04): BACKUP LOGICO DIARIO pelo sistema — lib/backup-rotina.js roda o scripts/backup-tabelas.js (as 3 empresas)
+// todo dia na BACKUP_HORA (Brasilia, padrao 03:30) e guarda no Storage privado (BACKUP_BUCKET, 'backups-privados'),
+// retendo BACKUP_RETER dias (14). E global (as 3 empresas), por isso fora da agenda da GOOD: roda mesmo com a GOOD
+// desligada (H-08). Disparo manual: GET /api/admin/backup?rodar=1 (sessao de admin ou header); estado sem ?rodar.
+const backupRotina = require('./lib/backup-rotina').criarRotina({
+  rodarBackup: (o) => require('./scripts/backup-tabelas').rodar(o),
+  obterSupabase: () => {   // credencial como o backup resolve (<PREFIXO>SUPABASE_* por empresa, ou as globais), nao so as globais (Codex #628)
+    const bk = require('./scripts/backup-tabelas');
+    for (const ficha of require('./lib/empresas').listarEmpresas()) { const c = bk.clienteDaEmpresa(ficha); if (c) return c; }
+    return supabase;
+  },
+  log: console.log,
+});
+backupRotina.ligar(drenagem);
+app.get('/api/admin/backup', (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found');
+  if (String(req.query.rodar || '') === '1') {
+    const d = backupRotina.diagnostico();
+    if (d.rodando) return res.json({ ok: false, erro: 'ja esta rodando desde ' + d.inicio, ...d });
+    backupRotina.executar({ motivo: 'manual (' + ((req.cookies && req.cookies.sessao) ? 'sessao' : 'chave') + ')' })
+      .catch((e) => console.error('[backup] manual:', e.message));
+    return res.json({ ok: true, iniciado: true, dica: 'recarregue sem ?rodar=1 pra ver o resultado', ...backupRotina.diagnostico() });
+  }
+  res.json({ ok: true, ...backupRotina.diagnostico() });
+});
+
 app.get('/api/admin/sonda-empresa/:chave', async (req, res) => {
   if (!adminOk(req)) return res.status(404).send('Not found');
   try {
