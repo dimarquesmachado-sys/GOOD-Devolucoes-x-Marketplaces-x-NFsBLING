@@ -1,0 +1,147 @@
+[
+  {
+    "tabela": "defeito_comentarios",
+    "itens": 10,
+    "estrutura": "col id bigint default nextval('defeito_comentarios_id_seq'::regclass) not null\ncol defeito_id bigint not null\ncol texto text not null\ncol quem text\ncol criado_em timestamp with time zone default now() not null\ncon defeito_comentarios_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_defcom_defeito ON public.defeito_comentarios USING btree (defeito_id, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_comentarios_pkey ON public.defeito_comentarios USING btree (id)\nrls ligado\nseq defeito_comentarios_id_seq pertence a defeito_comentarios.id"
+  },
+  {
+    "tabela": "defeito_comentarios_amb",
+    "itens": 10,
+    "estrutura": "col id bigint default nextval('defeito_comentarios_amb_id_seq'::regclass) not null\ncol defeito_id bigint not null\ncol texto text not null\ncol quem text\ncol criado_em timestamp with time zone default now() not null\ncon defeito_comentarios_amb_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_defcom_amb_defeito ON public.defeito_comentarios_amb USING btree (defeito_id, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_comentarios_amb_pkey ON public.defeito_comentarios_amb USING btree (id)\nrls ligado\nseq defeito_comentarios_amb_id_seq pertence a defeito_comentarios_amb.id"
+  },
+  {
+    "tabela": "defeito_comentarios_girassol",
+    "itens": 9,
+    "estrutura": "col id bigint default nextval('defeito_comentarios_amb_id_seq'::regclass) not null\ncol defeito_id bigint not null\ncol texto text not null\ncol quem text\ncol criado_em timestamp with time zone default now() not null\ncon defeito_comentarios_girassol_pkey PRIMARY KEY (id)\nidx CREATE INDEX defeito_comentarios_girassol_defeito_id_criado_em_idx ON public.defeito_comentarios_girassol USING btree (defeito_id, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_comentarios_girassol_pkey ON public.defeito_comentarios_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "defeito_pedidos",
+    "itens": 30,
+    "estrutura": "col id bigint default nextval('defeito_pedidos_id_seq'::regclass) not null\ncol tipo text not null\ncol defeito_id bigint\ncol sku text\ncol titulo text\ncol localizacao text\ncol quantidade integer default 1 not null\ncol observacao text\ncol doadores jsonb default '[]'::jsonb not null\ncol quem_pediu text\ncol criado_em timestamp with time zone default now() not null\ncol status text default 'pendente'::text not null\ncol quem_decidiu text\ncol decidido_em timestamp with time zone\ncol obs_admin text\ncol estoque_sku text\ncol estoque_qtd integer\ncol estoque_em timestamp with time zone\ncol estoque_produto_id bigint\ncol arquivado_em timestamp with time zone\ncol arquivado_por text\ncol estoque_operacao text\ncon defeito_pedidos_pkey PRIMARY KEY (id)\ncon defeito_pedidos_status_check CHECK ((status = ANY (ARRAY['pendente'::text, 'autorizado'::text, 'recusado'::text, 'concluido'::text])))\ncon defeito_pedidos_tipo_check CHECK ((tipo = ANY (ARRAY['recuperado'::text, 'descarte'::text])))\nidx CREATE INDEX idx_defped_defeito ON public.defeito_pedidos USING btree (defeito_id)\nidx CREATE INDEX idx_defped_status ON public.defeito_pedidos USING btree (status, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_pedidos_pkey ON public.defeito_pedidos USING btree (id)\nrls ligado\nseq defeito_pedidos_id_seq pertence a defeito_pedidos.id"
+  },
+  {
+    "tabela": "defeito_pedidos_amb",
+    "itens": 30,
+    "estrutura": "col id bigint default nextval('defeito_pedidos_amb_id_seq'::regclass) not null\ncol tipo text not null\ncol defeito_id bigint\ncol sku text\ncol titulo text\ncol localizacao text\ncol quantidade integer default 1 not null\ncol observacao text\ncol doadores jsonb default '[]'::jsonb not null\ncol quem_pediu text\ncol criado_em timestamp with time zone default now() not null\ncol status text default 'pendente'::text not null\ncol quem_decidiu text\ncol decidido_em timestamp with time zone\ncol obs_admin text\ncol estoque_sku text\ncol estoque_qtd integer\ncol estoque_em timestamp with time zone\ncol estoque_produto_id bigint\ncol arquivado_em timestamp with time zone\ncol arquivado_por text\ncol estoque_operacao text\ncon defeito_pedidos_amb_pkey PRIMARY KEY (id)\ncon defeito_pedidos_amb_status_check CHECK ((status = ANY (ARRAY['pendente'::text, 'autorizado'::text, 'recusado'::text, 'concluido'::text])))\ncon defeito_pedidos_amb_tipo_check CHECK ((tipo = ANY (ARRAY['recuperado'::text, 'descarte'::text])))\nidx CREATE INDEX idx_defped_amb_defeito ON public.defeito_pedidos_amb USING btree (defeito_id)\nidx CREATE INDEX idx_defped_amb_status ON public.defeito_pedidos_amb USING btree (status, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_pedidos_amb_pkey ON public.defeito_pedidos_amb USING btree (id)\nrls ligado\nseq defeito_pedidos_amb_id_seq pertence a defeito_pedidos_amb.id"
+  },
+  {
+    "tabela": "defeito_pedidos_girassol",
+    "itens": 29,
+    "estrutura": "col id bigint default nextval('defeito_pedidos_amb_id_seq'::regclass) not null\ncol tipo text not null\ncol defeito_id bigint\ncol sku text\ncol titulo text\ncol localizacao text\ncol quantidade integer default 1 not null\ncol observacao text\ncol doadores jsonb default '[]'::jsonb not null\ncol quem_pediu text\ncol criado_em timestamp with time zone default now() not null\ncol status text default 'pendente'::text not null\ncol quem_decidiu text\ncol decidido_em timestamp with time zone\ncol obs_admin text\ncol estoque_sku text\ncol estoque_qtd integer\ncol estoque_em timestamp with time zone\ncol estoque_produto_id bigint\ncol arquivado_em timestamp with time zone\ncol arquivado_por text\ncol estoque_operacao text\ncon defeito_pedidos_amb_status_check CHECK ((status = ANY (ARRAY['pendente'::text, 'autorizado'::text, 'recusado'::text, 'concluido'::text])))\ncon defeito_pedidos_amb_tipo_check CHECK ((tipo = ANY (ARRAY['recuperado'::text, 'descarte'::text])))\ncon defeito_pedidos_girassol_pkey PRIMARY KEY (id)\nidx CREATE INDEX defeito_pedidos_girassol_defeito_id_idx ON public.defeito_pedidos_girassol USING btree (defeito_id)\nidx CREATE INDEX defeito_pedidos_girassol_status_criado_em_idx ON public.defeito_pedidos_girassol USING btree (status, criado_em DESC)\nidx CREATE UNIQUE INDEX defeito_pedidos_girassol_pkey ON public.defeito_pedidos_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "devolucao_tags",
+    "itens": 9,
+    "estrutura": "col devolucao_id uuid not null\ncol tag_id uuid not null\ncol created_at timestamp with time zone default now()\ncon devolucao_tags_devolucao_id_fkey FOREIGN KEY (devolucao_id) REFERENCES devolucoes(id) ON DELETE CASCADE\ncon devolucao_tags_pkey PRIMARY KEY (devolucao_id, tag_id)\ncon devolucao_tags_tag_id_fkey FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE\nidx CREATE INDEX idx_devolucao_tags_devolucao ON public.devolucao_tags USING btree (devolucao_id)\nidx CREATE UNIQUE INDEX devolucao_tags_pkey ON public.devolucao_tags USING btree (devolucao_id, tag_id)\nrls ligado"
+  },
+  {
+    "tabela": "devolucao_tags_amb",
+    "itens": 9,
+    "estrutura": "col devolucao_id bigint not null\ncol tag_id uuid not null\ncol created_at timestamp with time zone default now()\ncon devolucao_tags_amb_devolucao_id_fkey FOREIGN KEY (devolucao_id) REFERENCES devolucoes_amb(id) ON DELETE CASCADE\ncon devolucao_tags_amb_pkey PRIMARY KEY (devolucao_id, tag_id)\ncon devolucao_tags_amb_tag_id_fkey FOREIGN KEY (tag_id) REFERENCES tags_amb(id) ON DELETE CASCADE\nidx CREATE INDEX devolucao_tags_amb_devolucao_id_idx ON public.devolucao_tags_amb USING btree (devolucao_id)\nidx CREATE UNIQUE INDEX devolucao_tags_amb_pkey ON public.devolucao_tags_amb USING btree (devolucao_id, tag_id)\nrls ligado"
+  },
+  {
+    "tabela": "devolucao_tags_girassol",
+    "itens": 9,
+    "estrutura": "col devolucao_id bigint not null\ncol tag_id uuid not null\ncol created_at timestamp with time zone default now()\ncon devolucao_tags_girassol_devolucao_id_fkey FOREIGN KEY (devolucao_id) REFERENCES devolucoes_girassol(id) ON DELETE CASCADE\ncon devolucao_tags_girassol_pkey PRIMARY KEY (devolucao_id, tag_id)\ncon devolucao_tags_girassol_tag_id_fkey FOREIGN KEY (tag_id) REFERENCES tags_girassol(id) ON DELETE CASCADE\nidx CREATE INDEX devolucao_tags_girassol_devolucao_id_idx ON public.devolucao_tags_girassol USING btree (devolucao_id)\nidx CREATE UNIQUE INDEX devolucao_tags_girassol_pkey ON public.devolucao_tags_girassol USING btree (devolucao_id, tag_id)\nrls ligado"
+  },
+  {
+    "tabela": "devolucoes",
+    "itens": 53,
+    "estrutura": "col id uuid default gen_random_uuid() not null\ncol created_at timestamp with time zone default now()\ncol shipment_id text not null\ncol order_id text\ncol pack_id text\ncol buyer_id text\ncol buyer_nome text\ncol produto_titulo text\ncol produto_mlb text\ncol produto_sku text\ncol produto_qtd integer\ncol produto_valor_unit numeric\ncol nf_numero text\ncol nf_serie text\ncol nf_chave text\ncol nf_valor numeric\ncol nf_data_emissao timestamp with time zone\ncol nf_id_bling bigint\ncol nf_link_danfe text\ncol tipo text not null\ncol status text default 'pendente'::text not null\ncol problema_descricao text\ncol problema_fotos jsonb default '[]'::jsonb\ncol data_concluido timestamp with time zone\ncol nf_devolucao_id_bling text\ncol nf_devolucao_numero text\ncol nf_devolucao_gerada_em timestamp with time zone\ncol buyer_nickname text\ncol pedido_bling_numero text\ncol marketplace text default 'mercadolivre'::text\ncol claim_id text\ncol custo_unitario numeric\ncol custo_devolucao_ml numeric\ncol funcionario text\ncol nf_itens jsonb\ncol localizacao text\ncol defeito_qtd integer\ncol conserto_info text\ncol estado_atual text\ncol tipo_anterior text\ncol itens_devolvidos jsonb\ncol estoque_lancado_em timestamp with time zone\ncol estoque_deposito text\ncon devolucoes_pkey PRIMARY KEY (id)\ncon devolucoes_status_check CHECK ((status = ANY (ARRAY['pendente'::text, 'concluido'::text])))\ncon devolucoes_tipo_check CHECK ((tipo = ANY (ARRAY['aprovado'::text, 'problema'::text])))\nidx CREATE INDEX idx_devolucoes_created ON public.devolucoes USING btree (created_at DESC)\nidx CREATE INDEX idx_devolucoes_created_at ON public.devolucoes USING btree (created_at)\nidx CREATE INDEX idx_devolucoes_produto_sku ON public.devolucoes USING btree (produto_sku)\nidx CREATE INDEX idx_devolucoes_status ON public.devolucoes USING btree (status)\nidx CREATE INDEX idx_devolucoes_tipo ON public.devolucoes USING btree (tipo)\nidx CREATE UNIQUE INDEX devolucoes_pkey ON public.devolucoes USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "devolucoes_amb",
+    "itens": 51,
+    "estrutura": "col id bigint default nextval('devolucoes_amb_id_seq'::regclass) not null\ncol marketplace text\ncol shipment_id text\ncol order_id text\ncol pack_id text\ncol tracking text\ncol buyer_id text\ncol buyer_nome text\ncol buyer_nickname text\ncol pedido_bling_numero text\ncol produto_titulo text\ncol produto_mlb text\ncol produto_sku text\ncol produto_qtd integer\ncol produto_valor_unit numeric\ncol nf_numero text\ncol nf_serie text\ncol nf_chave text\ncol nf_valor numeric\ncol nf_data_emissao text\ncol nf_id_bling text\ncol nf_link_danfe text\ncol nf_itens jsonb\ncol tipo text\ncol status text\ncol funcionario text\ncol problema_descricao text\ncol problema_fotos jsonb\ncol localizacao text\ncol defeito_qtd integer\ncol conserto_info jsonb\ncol criado_em timestamp with time zone default now()\ncol estado_atual text\ncol nf_devolucao_id_bling text\ncol nf_devolucao_numero text\ncol nf_devolucao_gerada_em timestamp with time zone\ncol data_concluido timestamp with time zone\ncol tipo_anterior text\ncol produto_sku_origem text\ncol itens_devolvidos jsonb\ncol estoque_lancado_em timestamp with time zone\ncol estoque_deposito text\ncon devolucoes_amb_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_devamb_nf_devolucao ON public.devolucoes_amb USING btree (nf_devolucao_id_bling)\nidx CREATE INDEX ix_dev_amb_criado ON public.devolucoes_amb USING btree (criado_em DESC)\nidx CREATE INDEX ix_dev_amb_nf ON public.devolucoes_amb USING btree (nf_numero)\nidx CREATE INDEX ix_dev_amb_order ON public.devolucoes_amb USING btree (order_id)\nidx CREATE INDEX ix_dev_amb_tracking ON public.devolucoes_amb USING btree (tracking)\nidx CREATE UNIQUE INDEX devolucoes_amb_pkey ON public.devolucoes_amb USING btree (id)\nrls ligado\nseq devolucoes_amb_id_seq pertence a devolucoes_amb.id"
+  },
+  {
+    "tabela": "devolucoes_capturadas",
+    "itens": 36,
+    "estrutura": "col id bigint default nextval('devolucoes_capturadas_id_seq'::regclass) not null\ncol empresa text not null\ncol marketplace text not null\ncol chave_marketplace text not null\ncol pedido text\ncol pack text\ncol shipment text\ncol rastreio text\ncol nf_numero text\ncol nf_chave text\ncol cliente_nome text\ncol produto_sku text\ncol produto_titulo text\ncol produto_qtd integer\ncol status text\ncol motivo text\ncol motivo_texto text\ncol valor_refund numeric\ncol criado_no_mkt timestamp with time zone\ncol atualizado_no_mkt timestamp with time zone\ncol cru jsonb\ncol capturado_em timestamp with time zone default now() not null\ncol visto_por_ultimo timestamp with time zone default now() not null\ncol tipo_tiktok text\ncon devolucoes_capturadas_pkey PRIMARY KEY (id)\nidx CREATE INDEX devcap_nf ON public.devolucoes_capturadas USING btree (nf_numero) WHERE (nf_numero IS NOT NULL)\nidx CREATE INDEX devcap_pack ON public.devolucoes_capturadas USING btree (pack) WHERE (pack IS NOT NULL)\nidx CREATE INDEX devcap_pedido ON public.devolucoes_capturadas USING btree (pedido) WHERE (pedido IS NOT NULL)\nidx CREATE INDEX devcap_rastreio ON public.devolucoes_capturadas USING btree (rastreio) WHERE (rastreio IS NOT NULL)\nidx CREATE INDEX devcap_recentes ON public.devolucoes_capturadas USING btree (empresa, criado_no_mkt DESC)\nidx CREATE INDEX devcap_sem_retorno ON public.devolucoes_capturadas USING btree (empresa, tipo_tiktok, criado_no_mkt DESC) WHERE (tipo_tiktok IS NOT NULL)\nidx CREATE INDEX devcap_shipment ON public.devolucoes_capturadas USING btree (shipment) WHERE (shipment IS NOT NULL)\nidx CREATE UNIQUE INDEX devolucoes_capturadas_pkey ON public.devolucoes_capturadas USING btree (id)\nidx CREATE UNIQUE INDEX devolucoes_capturadas_unica ON public.devolucoes_capturadas USING btree (empresa, marketplace, chave_marketplace)\nrls ligado\nseq devolucoes_capturadas_id_seq pertence a devolucoes_capturadas.id"
+  },
+  {
+    "tabela": "devolucoes_girassol",
+    "itens": 50,
+    "estrutura": "col id bigint default nextval('devolucoes_amb_id_seq'::regclass) not null\ncol marketplace text\ncol shipment_id text\ncol order_id text\ncol pack_id text\ncol tracking text\ncol buyer_id text\ncol buyer_nome text\ncol buyer_nickname text\ncol pedido_bling_numero text\ncol produto_titulo text\ncol produto_mlb text\ncol produto_sku text\ncol produto_qtd integer\ncol produto_valor_unit numeric\ncol nf_numero text\ncol nf_serie text\ncol nf_chave text\ncol nf_valor numeric\ncol nf_data_emissao text\ncol nf_id_bling text\ncol nf_link_danfe text\ncol nf_itens jsonb\ncol tipo text\ncol status text\ncol funcionario text\ncol problema_descricao text\ncol problema_fotos jsonb\ncol localizacao text\ncol defeito_qtd integer\ncol conserto_info jsonb\ncol criado_em timestamp with time zone default now()\ncol estado_atual text\ncol nf_devolucao_id_bling text\ncol nf_devolucao_numero text\ncol nf_devolucao_gerada_em timestamp with time zone\ncol data_concluido timestamp with time zone\ncol tipo_anterior text\ncol produto_sku_origem text\ncol itens_devolvidos jsonb\ncol estoque_lancado_em timestamp with time zone\ncol estoque_deposito text\ncon devolucoes_girassol_pkey PRIMARY KEY (id)\nidx CREATE INDEX devolucoes_girassol_criado_em_idx ON public.devolucoes_girassol USING btree (criado_em DESC)\nidx CREATE INDEX devolucoes_girassol_nf_devolucao_id_bling_idx ON public.devolucoes_girassol USING btree (nf_devolucao_id_bling)\nidx CREATE INDEX devolucoes_girassol_nf_numero_idx ON public.devolucoes_girassol USING btree (nf_numero)\nidx CREATE INDEX devolucoes_girassol_order_id_idx ON public.devolucoes_girassol USING btree (order_id)\nidx CREATE INDEX devolucoes_girassol_tracking_idx ON public.devolucoes_girassol USING btree (tracking)\nidx CREATE UNIQUE INDEX devolucoes_girassol_pkey ON public.devolucoes_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "espreita_notas",
+    "itens": 9,
+    "estrutura": "col chave text not null\ncol baixado boolean default false\ncol comentario text\ncol atualizado_em timestamp with time zone default now()\ncol usuario text\ncol ticket text\ncon espreita_notas_pkey PRIMARY KEY (chave)\nidx CREATE UNIQUE INDEX espreita_notas_pkey ON public.espreita_notas USING btree (chave)\nrls ligado"
+  },
+  {
+    "tabela": "espreita_notas_amb",
+    "itens": 13,
+    "estrutura": "col id bigint default nextval('espreita_notas_amb_id_seq'::regclass) not null\ncol chave text not null\ncol marketplace text\ncol comentario text\ncol ticket text\ncol baixado boolean default false\ncol criado_em timestamp with time zone default now()\ncol atualizado_em timestamp with time zone default now()\ncon espreita_notas_amb_pkey PRIMARY KEY (id)\nidx CREATE UNIQUE INDEX espreita_notas_amb_pkey ON public.espreita_notas_amb USING btree (id)\nidx CREATE UNIQUE INDEX ux_espreita_amb_chave ON public.espreita_notas_amb USING btree (chave)\nrls ligado\nseq espreita_notas_amb_id_seq pertence a espreita_notas_amb.id"
+  },
+  {
+    "tabela": "espreita_notas_girassol",
+    "itens": 12,
+    "estrutura": "col id bigint default nextval('espreita_notas_amb_id_seq'::regclass) not null\ncol chave text not null\ncol marketplace text\ncol comentario text\ncol ticket text\ncol baixado boolean default false\ncol criado_em timestamp with time zone default now()\ncol atualizado_em timestamp with time zone default now()\ncon espreita_notas_girassol_pkey PRIMARY KEY (id)\nidx CREATE UNIQUE INDEX espreita_notas_girassol_chave_idx ON public.espreita_notas_girassol USING btree (chave)\nidx CREATE UNIQUE INDEX espreita_notas_girassol_pkey ON public.espreita_notas_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "eventos_checkout",
+    "itens": 11,
+    "estrutura": "col id bigint not null\ncol empresa text\ncol tipo text\ncol codigo text\ncol quem text\ncol extra jsonb default '{}'::jsonb\ncol criado_em timestamp with time zone default now()\ncon eventos_checkout_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_eventos_checkout_codigo ON public.eventos_checkout USING btree (codigo)\nidx CREATE UNIQUE INDEX eventos_checkout_pkey ON public.eventos_checkout USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "pecas_retiradas",
+    "itens": 13,
+    "estrutura": "col id bigint default nextval('pecas_retiradas_id_seq'::regclass) not null\ncol defeito_id bigint not null\ncol peca text not null\ncol usada_em text\ncol quem text\ncol criado_em timestamp with time zone default now()\ncol destino_defeito_id bigint\ncon pecas_retiradas_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_pecas_destino ON public.pecas_retiradas USING btree (destino_defeito_id)\nidx CREATE INDEX pecas_retiradas_defeito_idx ON public.pecas_retiradas USING btree (defeito_id)\nidx CREATE UNIQUE INDEX pecas_retiradas_pkey ON public.pecas_retiradas USING btree (id)\nrls ligado\nseq pecas_retiradas_id_seq pertence a pecas_retiradas.id"
+  },
+  {
+    "tabela": "pecas_retiradas_amb",
+    "itens": 12,
+    "estrutura": "col id bigint default nextval('pecas_retiradas_amb_id_seq'::regclass) not null\ncol defeito_id bigint\ncol peca text\ncol usada_em text\ncol quem text\ncol criado_em timestamp with time zone default now()\ncol destino_defeito_id bigint\ncon pecas_retiradas_amb_pkey PRIMARY KEY (id)\nidx CREATE INDEX idx_pecas_amb_destino ON public.pecas_retiradas_amb USING btree (destino_defeito_id)\nidx CREATE UNIQUE INDEX pecas_retiradas_amb_pkey ON public.pecas_retiradas_amb USING btree (id)\nrls ligado\nseq pecas_retiradas_amb_id_seq pertence a pecas_retiradas_amb.id"
+  },
+  {
+    "tabela": "pecas_retiradas_girassol",
+    "itens": 11,
+    "estrutura": "col id bigint default nextval('pecas_retiradas_amb_id_seq'::regclass) not null\ncol defeito_id bigint\ncol peca text\ncol usada_em text\ncol quem text\ncol criado_em timestamp with time zone default now()\ncol destino_defeito_id bigint\ncon pecas_retiradas_girassol_pkey PRIMARY KEY (id)\nidx CREATE INDEX pecas_retiradas_girassol_destino_defeito_id_idx ON public.pecas_retiradas_girassol USING btree (destino_defeito_id)\nidx CREATE UNIQUE INDEX pecas_retiradas_girassol_pkey ON public.pecas_retiradas_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "recados",
+    "itens": 13,
+    "estrutura": "col id bigint default nextval('recados_id_seq'::regclass) not null\ncol chave text not null\ncol texto text not null\ncol ativo boolean default true\ncol criado_por text\ncol criado_em timestamp with time zone default now()\ncol ciente_por text\ncol ciente_em timestamp with time zone\ncon recados_pkey PRIMARY KEY (id)\nidx CREATE INDEX recados_chave_idx ON public.recados USING btree (chave) WHERE ativo\nidx CREATE UNIQUE INDEX recados_pkey ON public.recados USING btree (id)\nrls ligado\nseq recados_id_seq pertence a recados.id"
+  },
+  {
+    "tabela": "recados_amb",
+    "itens": 13,
+    "estrutura": "col id bigint default nextval('recados_amb_id_seq'::regclass) not null\ncol identificador text not null\ncol texto text not null\ncol criado_por text\ncol ciente_por text\ncol ciente_em timestamp with time zone\ncol resolvido boolean default false\ncol criado_em timestamp with time zone default now()\ncon recados_amb_pkey PRIMARY KEY (id)\nidx CREATE INDEX ix_recados_amb_ident ON public.recados_amb USING btree (identificador)\nidx CREATE UNIQUE INDEX recados_amb_pkey ON public.recados_amb USING btree (id)\nrls ligado\nseq recados_amb_id_seq pertence a recados_amb.id"
+  },
+  {
+    "tabela": "recados_girassol",
+    "itens": 12,
+    "estrutura": "col id bigint default nextval('recados_amb_id_seq'::regclass) not null\ncol identificador text not null\ncol texto text not null\ncol criado_por text\ncol ciente_por text\ncol ciente_em timestamp with time zone\ncol resolvido boolean default false\ncol criado_em timestamp with time zone default now()\ncon recados_girassol_pkey PRIMARY KEY (id)\nidx CREATE INDEX recados_girassol_identificador_idx ON public.recados_girassol USING btree (identificador)\nidx CREATE UNIQUE INDEX recados_girassol_pkey ON public.recados_girassol USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "sku_depara",
+    "itens": 8,
+    "estrutura": "col sku_antigo text not null\ncol sku_atual text not null\ncol produto_id bigint\ncol criado_em timestamp with time zone default now()\ncol criado_por text\ncon sku_depara_pkey PRIMARY KEY (sku_antigo)\nidx CREATE UNIQUE INDEX sku_depara_pkey ON public.sku_depara USING btree (sku_antigo)\nrls ligado"
+  },
+  {
+    "tabela": "sku_depara_amb",
+    "itens": 8,
+    "estrutura": "col sku_antigo text not null\ncol sku_atual text not null\ncol produto_id bigint\ncol criado_em timestamp with time zone default now()\ncol criado_por text\ncon sku_depara_amb_pkey PRIMARY KEY (sku_antigo)\nidx CREATE UNIQUE INDEX sku_depara_amb_pkey ON public.sku_depara_amb USING btree (sku_antigo)\nrls ligado"
+  },
+  {
+    "tabela": "sku_depara_girassol",
+    "itens": 8,
+    "estrutura": "col sku_antigo text not null\ncol sku_atual text not null\ncol produto_id bigint\ncol criado_em timestamp with time zone default now()\ncol criado_por text\ncon sku_depara_girassol_pkey PRIMARY KEY (sku_antigo)\nidx CREATE UNIQUE INDEX sku_depara_girassol_pkey ON public.sku_depara_girassol USING btree (sku_antigo)\nrls ligado"
+  },
+  {
+    "tabela": "tags",
+    "itens": 9,
+    "estrutura": "col id uuid default gen_random_uuid() not null\ncol nome text not null\ncol cor text default '#6c757d'::text\ncol created_at timestamp with time zone default now()\ncon tags_nome_key UNIQUE (nome)\ncon tags_pkey PRIMARY KEY (id)\nidx CREATE UNIQUE INDEX tags_nome_key ON public.tags USING btree (nome)\nidx CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "tags_amb",
+    "itens": 9,
+    "estrutura": "col id uuid default gen_random_uuid() not null\ncol nome text not null\ncol cor text default '#6c757d'::text\ncol created_at timestamp with time zone default now()\ncon tags_amb_nome_key UNIQUE (nome)\ncon tags_amb_pkey PRIMARY KEY (id)\nidx CREATE UNIQUE INDEX tags_amb_nome_key ON public.tags_amb USING btree (nome)\nidx CREATE UNIQUE INDEX tags_amb_pkey ON public.tags_amb USING btree (id)\nrls ligado"
+  },
+  {
+    "tabela": "tags_girassol",
+    "itens": 9,
+    "estrutura": "col id uuid default gen_random_uuid() not null\ncol nome text not null\ncol cor text default '#6c757d'::text\ncol created_at timestamp with time zone default now()\ncon tags_girassol_nome_key UNIQUE (nome)\ncon tags_girassol_pkey PRIMARY KEY (id)\nidx CREATE UNIQUE INDEX tags_girassol_nome_key ON public.tags_girassol USING btree (nome)\nidx CREATE UNIQUE INDEX tags_girassol_pkey ON public.tags_girassol USING btree (id)\nrls ligado"
+  }
+]

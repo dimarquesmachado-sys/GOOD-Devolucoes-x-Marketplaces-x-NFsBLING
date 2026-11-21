@@ -27,6 +27,17 @@
 -- ganha as colunas que faltam em relação ao molde (sem NOT NULL, sem
 -- sequência da AMB). Rodar de novo é seguro e idempotente.
 --
+-- b777: SEQUÊNCIA PRÓPRIA. `LIKE ... INCLUDING ALL` copia o default
+-- `nextval('devolucoes_amb_id_seq')` — a empresa nova nascia contando no
+-- numerador da AMB, e a sequência PERTENCE à tabela da AMB: apagar
+-- `devolucoes_amb` leva junto o default do `id` da outra empresa, e dali em
+-- diante toda gravação dela falha ("null value in column id"). Achado no
+-- export do schema de produção (20/11): as 6 tabelas da Girassol estavam
+-- assim. Agora toda tabela da empresa termina com sequência PRÓPRIA (dona =
+-- a coluna dela), começando depois do maior id que já existe — vale pra
+-- empresa nova e conserta a que já existe. Tabela travada durante a troca
+-- (nenhuma gravação no meio). Rodar de novo não muda nada.
+--
 -- Por isso ela SÓ aceita sufixo no formato `_[a-z0-9]{2,12}` e SÓ cria as
 -- cinco tabelas conhecidas, copiando de moldes fixos escritos aqui dentro.
 -- Não recebe nome de tabela, não recebe SQL, e não apaga nada.
@@ -169,20 +180,56 @@ begin
                           else 'ja existia — ' || n_add || ' coluna(s) acrescentada(s), linhas preservadas' end;
         return next;
       end;
-      continue;
+    else
+      -- INCLUDING ALL: colunas, tipos, defaults, indices, constraints,
+      -- comentarios e identidade. A empresa nova nasce igual a AMB.
+      execute format('create table public.%I (like public.%I including all)', nova, molde);
+
+      -- RLS ligado e SEM politica, igual as outras: a service_role passa por
+      -- cima, e ninguem mais entra — nem com a chave anon publica.
+      execute format('alter table public.%I enable row level security', nova);
+
+      tabela := nova;
+      resultado := 'criada (copia de ' || molde || ')';
+      return next;
     end if;
 
-    -- INCLUDING ALL: colunas, tipos, defaults, indices, constraints,
-    -- comentarios e identidade. A empresa nova nasce igual a AMB.
-    execute format('create table public.%I (like public.%I including all)', nova, molde);
-
-    -- RLS ligado e SEM politica, igual as outras: a service_role passa por
-    -- cima, e ninguem mais entra — nem com a chave anon publica.
-    execute format('alter table public.%I enable row level security', nova);
-
-    tabela := nova;
-    resultado := 'criada (copia de ' || molde || ')';
-    return next;
+    -- b777 - SEQUENCIA PROPRIA (nas duas pontas: tabela criada agora pelo
+    -- LIKE, que trouxe o nextval da AMB, e tabela que ja existia assim).
+    -- Coluna com default nextval(...) cuja sequencia NAO pertence a ela
+    -- (pg_get_serial_sequence nulo) ganha `<tabela>_<coluna>_seq`, dona = a
+    -- coluna, comecando em max(coluna)+1. A tabela fica travada contra
+    -- gravacao ate o fim da transacao: nenhum id do numerador antigo entra
+    -- entre ler o maximo e trocar o default.
+    declare
+      sc record;
+      propria text;
+      proximo bigint;
+    begin
+      for sc in
+        select a.attname as nome, pg_get_expr(d.adbin, d.adrelid) as padrao
+          from pg_attribute a
+          join pg_class c on c.oid = a.attrelid
+          join pg_namespace ns on ns.oid = c.relnamespace
+          join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+         where ns.nspname = 'public' and c.relname = nova
+           and a.attnum > 0 and not a.attisdropped
+           and pg_get_expr(d.adbin, d.adrelid) like 'nextval(%'
+           and pg_get_serial_sequence(format('public.%I', nova), a.attname) is null
+         order by a.attnum
+      loop
+        execute format('lock table public.%I in share row exclusive mode', nova);
+        propria := nova || '_' || sc.nome || '_seq';
+        execute format('create sequence if not exists public.%I', propria);
+        execute format('alter sequence public.%I owned by public.%I.%I', propria, nova, sc.nome);
+        execute format('select coalesce(max(%I), 0) + 1 from public.%I', sc.nome, nova) into proximo;
+        perform setval(format('public.%I', propria)::regclass, proximo, false);
+        execute format('alter table public.%I alter column %I set default nextval(%L::regclass)', nova, sc.nome, 'public.' || propria);
+        tabela := nova;
+        resultado := 'coluna ' || sc.nome || ': sequencia propria ' || propria || ' (antes ' || sc.padrao || '), proximo ' || proximo;
+        return next;
+      end loop;
+    end;
   end loop;
 
   -- b651 - FOREIGN KEYS das tabelas de tags. `LIKE ... INCLUDING ALL` copia
@@ -228,6 +275,13 @@ grant execute on function public.provisionar_empresa(text) to service_role;
 --
 --   select * from public.provisionar_empresa('_zz9');
 --   -- devolve "ja existia (colunas em dia)" por tabela  ← é idempotente
+--
+-- b777 — CONSERTAR A GIRASSOL (sequências emprestadas da AMB):
+--   select * from public.provisionar_empresa('_girassol');
+--   -- 6 linhas "coluna id: sequencia propria ..._girassol_id_seq (antes
+--   -- nextval('..._amb_id_seq'...)), proximo N" + "ja existia (colunas em dia)".
+--   -- Rodar de novo: só "colunas em dia". Ensaio no schema real:
+--   -- test/provisionar-postgres-real.test.js
 --
 -- E para limpar o teste (só o teste; a função não apaga nada):
 --   ⚠️ b374: as 2 de defeito entraram na lista — sem elas o rollback
