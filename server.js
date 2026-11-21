@@ -622,7 +622,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.302 (b788: V-13 — sonda da etiqueta de volta do ML, 2a rodada do Codex #637: dado pessoal)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.303 (b789: V-13 — pacote MELI: etiqueta do ML sem cliente achada pelo Ref. ID — campo, botao e foto)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
