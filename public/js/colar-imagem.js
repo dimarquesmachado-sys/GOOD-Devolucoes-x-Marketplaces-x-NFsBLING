@@ -183,6 +183,23 @@
     return out;
   }
 
+  /**
+   * b796 - A LISTA DAS VENDAS NAO ENTREGUES CONFERE A LEITURA.
+   * O cartao "pacote MELI" carrega as vendas que o ML deu como nao entregues, cada uma com o numero do envio — que e o
+   * Ref. ID da etiqueta (busca.js, `refIdNaListaDosNaoEntregues`). Se, dos numeros lidos da foto, EXATAMENTE UM e o
+   * envio de uma dessas vendas, e ele: um numero de 11 digitos lido da etiqueta que tambem e um envio nao entregue
+   * desta empresa nao e coincidencia — e isso vale mais do que o rotulo lido ou o numero "inteiro". Resolve o que antes
+   * virava pergunta: o numero partido pelo leitor ("4812602434 0" — so uma das leituras existe), o rotulo que nao foi
+   * lido, dois numeros na foto.
+   * Nenhum na lista, ou mais de um: devolve null e NADA muda (a lista pode nao ter carregado, estar cortada ou a venda
+   * ainda nao ter entrado nela) — a regra do `certo` e a pergunta continuam valendo como antes.
+   */
+  function conferirComNaoEntregues(lista, estaNaLista) {
+    if (typeof estaNaLista !== 'function') return null;
+    var achados = (lista || []).filter(function (c) { return typeof c.rotulado === 'boolean' && estaNaLista(c.valor); });
+    return achados.length === 1 ? achados[0] : null;
+  }
+
   // ── a area visivel, criada por JS (nao precisa mexer no index) ──
   var zona, statusEl, previaEl, opcoesEl, inputArquivo, inputArquivoRef;
 
@@ -679,6 +696,16 @@
   // do ML: nao vai pra busca (nem pro registro do servidor) sem alguem tocar nele.
   // b791: e so o numero `certo` (lido inteiro e sozinho — ver `candidatosRefId`) e buscado sem perguntar.
   function mostrarRefId(lista, soRotulado) {
+    // b796: um (e so um) dos numeros lidos e o envio de uma venda NAO ENTREGUE desta empresa? entao e o Ref. ID — busca
+    // por ele sem perguntar, mesmo sem rotulo ou lido em pedacos. (A venda achada ainda mostra o numero lido pra
+    // conferir com a etiqueta — `_refIdsLidosDaFoto`, em `oferecer`.) Vale tambem na tentativa automatica (`soRotulado`):
+    // a cautela dali e com numero solto que pode ser telefone/CPF de outra etiqueta — e este e um numero de envio da
+    // propria empresa, que o servidor ja conhece.
+    var conferido = conferirComNaoEntregues(lista, typeof refIdNaListaDosNaoEntregues === 'function' ? refIdNaListaDosNaoEntregues : null);
+    if (conferido) {
+      oferecer([{ valor: conferido.valor, tipo: conferido.tipo, peso: conferido.peso, rotulado: conferido.rotulado, certo: true }], '', false);
+      return;
+    }
     var um = lista.length === 1 ? lista[0] : null;
     var perguntar = lista.length > 1 || (!!um && (um.certo === false || (!!soRotulado && !um.rotulado)));
     if (!lista.length) {

@@ -20,7 +20,7 @@ const RAIZ = path.join(__dirname, '..');
 const ler = (p) => fs.readFileSync(path.join(RAIZ, p), 'utf8');
 
 const SRC = ler('public/js/colar-imagem.js');
-const api = new Function(entreMarcadores(SRC, 'var PADROES = [', '  // ── a area visivel') + '; return { candidatos, candidatosRefId };')();
+const api = new Function(entreMarcadores(SRC, 'var PADROES = [', '  // ── a area visivel') + '; return { candidatos, candidatosRefId, conferirComNaoEntregues };')();
 const refs = (texto, jaTentado) => api.candidatosRefId(texto, jaTentado).map((c) => c.valor + (c.rotulado ? '*' : ''));   // * = leu o rotulo
 
 const BARRAS = '48133297953', REF = '48126024340';
@@ -72,6 +72,25 @@ console.log('\n── 1b. (b791, Codex #638) o numero pode ter sido lido pela ME
   ok(geral.length === 2 && geral.every((c) => c.certo === false), '⚠️ na leitura geral da foto entram as DUAS leituras do numero partido (sao duas: a tela pergunta)');
 }
 
+console.log('\n── 1c. (b796) a lista das vendas NAO ENTREGUES confere a leitura: um, e so um, dos numeros lidos esta nela → e ele');
+{
+  // a lista que o cartao carrega (busca.js): o numero do envio de cada venda nao entregue da empresa
+  const naLista = (refs) => (n) => refs.includes(n);
+  const conferido = (texto, refs, ja) => { const c = api.conferirComNaoEntregues(api.candidatosRefId(texto, ja), refs ? naLista(refs) : null); return c ? c.valor : null; };
+  const LISTA_AMB = ['48445471734', '48414606123', REF];
+  ok(conferido('REF. ID: 4812602434 0', LISTA_AMB) === REF, '⚠️ numero partido depois do 10o digito (duas leituras, nenhuma "certa"): a de 11 digitos e uma venda nao entregue → e ela');
+  ok(conferido('G MELI AO\n48126024340\n48133297958\nXSP16', LISTA_AMB) === REF, '⚠️ dois numeros soltos, sem rotulo: o que esta na lista e o Ref. ID');
+  ok(conferido(OCR_REAL, LISTA_AMB, BARRAS) === REF, '  o texto medido na foto real: confere (e ja seria buscado de qualquer jeito)');
+  ok(conferido('REF. ID: 4812602434 0', ['48445471734']) === null, '⚠️ nenhuma das leituras esta na lista: nao confere — vale a regra de antes (pergunta)');
+  ok(conferido('G MELI AO\n48126024340\n48445471734', LISTA_AMB) === null, '⚠️ DOIS numeros lidos estao na lista: a lista nao decide — pergunta');
+  ok(conferido('REF. ID: 4812602434O', LISTA_AMB) === null, '⚠️ digito trocado por letra ("4812602434O"): o numero lido (10 digitos) nao e venda nenhuma — nao confere, pergunta');
+  ok(conferido('REF. ID: 4812602434 0', null) === null && api.conferirComNaoEntregues(api.candidatosRefId('REF. ID: 48126024340'), undefined) === null, '  sem a lista (nao carregou): nao confere nada');
+  // candidato que nao e Ref. ID (Shopee, rastreio — sem `rotulado`) nunca e conferido como venda nao entregue
+  ok(api.conferirComNaoEntregues([{ valor: REF, tipo: 'outro', peso: 1 }], naLista(LISTA_AMB)) === null, '  candidato que nao veio da leitura do Ref. ID nao entra na conferencia');
+  const c = api.conferirComNaoEntregues(api.candidatosRefId('REF. ID: 4812602434 0'), naLista(LISTA_AMB));
+  ok(c && c.rotulado === true && c.certo === false, '  devolve o candidato como veio (quem decide buscar e a tela)');
+}
+
 console.log('\n── 2. sem o rotulo: os numeros soltos, menos o codigo que ja foi tentado');
 ok(refs('MELI\n48126024340\n481332 97953', BARRAS).join() === REF, '⚠️ rotulo ilegivel e UM numero de envio na etiqueta → e ele');
 ok(refs('MELI\n48126024340\n48133297953', BARRAS).join() === REF, '⚠️ o codigo de barras ja tentado (aqui lido inteiro) NAO volta como candidato');
@@ -119,8 +138,8 @@ console.log('\n── 5. a tela nova chega no navegador (as 3 empresas carregam 
 {
   const good = ler('public/index.html'), fab = ler('amb-devolucoes/public-AMB/index-AMB.html');
   const n = (re, s) => Number((s.match(re) || [])[1]) || 0;
-  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4795 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4797, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; o colar-imagem.js mudou de novo no b790 e no b791)');
-  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 789 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 791, '⚠️ fabrica: idem');
+  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4796 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4798, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; os dois mudaram de novo no b796)');
+  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 796 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 796, '⚠️ fabrica: idem');
   for (const [nome, html] of [['GOOD', good], ['fabrica', fab]]) {
     const cola = entreMarcadores(html, 'id="modalColaBipe"', 'SHOPEE</div>');
     ok(/SEM nome de cliente/.test(cola) && /Ref\. ID/.test(cola) && /pacote MELI/.test(cola), '  ' + nome + ': a colinha "O que bipar" explica o pacote MELI e o Ref. ID');
