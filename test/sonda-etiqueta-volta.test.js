@@ -107,10 +107,23 @@ function mlFalso(opcoes = {}) {
     }
     // ── as buscas de vendas ──
     if (caminho.startsWith('/orders/search?seller=' + CONTA)) {
-      const res = (total, lista) => sim({ paging: { total }, results: lista || [] });
+      // o ENVELOPE de verdade da busca do ML: ele devolve em `query` o proprio texto que foi buscado (o ECO da pergunta)
+      const eco = (caminho.match(/[?&]q=([^&]*)/) || [])[1] || '';
+      const res = (total, lista) => sim({ query: eco, results: lista || [], sort: { id: 'date_desc', name: 'Date descending' }, available_sorts: [{ id: 'date_asc', name: 'Date ascending' }],
+        filters: [], paging: { total, offset: 0, limit: 5 }, display: 'complete' });
       const venda = { id: Number(PEDIDO), status: 'cancelled', tags: ['not_delivered'], shipping: { id: Number(REF) }, date_created: '2026-09-29T08:17:00Z', buyer: { nickname: 'COMPRADORZE', first_name: 'Fulano de Tal' } };
       const comum = { id: 2000019999000001, status: 'paid', tags: ['delivered'], shipping: { id: 48999000001 }, date_created: '2026-11-20T08:00:00Z', buyer: { nickname: 'COMPRADORZE' } };
       if (o.conta === 'vazia') return res(0, []);
+      if (o.conta === 'real') {   // o que a conta da AMB devolveu em 21/11 (ids trocados; status e tags como vieram)
+        const ped = (i, status, tags) => ({ id: 2000019000000000 + i, status, tags, shipping: { id: 48500000000 + i }, date_created: '2026-11-2' + (i % 2) + 'T04:27:36.000-04:00', buyer: { nickname: 'COMPRADORZE' } });
+        const aCaminho = [1, 2, 3, 4, 5].map((i) => ped(i, 'paid', ['order_has_discount', 'paid', 'not_delivered']));
+        const naoEntregues = [11, 12, 13, 14, 15].map((i) => ped(i, 'cancelled', ['catalog', 'not_delivered', 'not_paid']));
+        if (caminho.includes('&q=')) return res(0, []);                                        // a busca por numero nao acha nenhum dos dois
+        if (caminho.includes('&tags=not_delivered')) return res(254, aCaminho);                // a TAG pega o que ainda esta a caminho
+        if (caminho.includes('&shipping.status=not_delivered')) return res(36, naoEntregues);  // o STATUS DO ENVIO pega os nao entregues
+        if (caminho.includes('&order.status=cancelled')) return res(322, naoEntregues);
+        return res(6180, aCaminho);
+      }
       if (o.conta === 'uma') return caminho.includes('&q=' + BARRAS) ? res(0, []) : res(1, [venda]);   // TODAS as vendas (1) casam com os filtros
       const controle = () => res(5000, [comum, venda]);   // a busca sem filtro
       if (caminho.includes('&q=' + BARRAS)) return res(0, []);
@@ -158,9 +171,9 @@ const semPausa = { pausaMs: 0 };
     ok(lig.preenchidos.some((x) => x.caminho === 'sibling' && /"sibling_id":48133297953/.test(x.valor)) && lig.preenchidos.some((x) => x.caminho === 'return_tracking_number')
       && lig.vazios.includes('return_details'), '  campos de ligacao: os preenchidos com valor, e os que EXISTEM mas vieram vazios (return_details)');
     ok(r.consultas.pedido.cancel_detail && r.consultas.pedido.cancel_detail.code === 'shipment_not_delivered' && r.consultas.pedido.tags.includes('not_delivered'), '  o pedido: motivo do cancelamento e tags');
-    ok(r.leitura.busca_de_vendas_pelo_ref_id === 'respeitado (1 de 5000)' && r.leitura.busca_de_vendas_pelo_codigo_de_barras === 'respeitado (0 de 5000)',
+    ok(r.leitura.busca_de_vendas_pelo_ref_id === 'ACHA 1 venda(s) (a conta tem 5000)' && r.leitura.busca_de_vendas_pelo_codigo_de_barras === 'NAO ACHA — a busca de vendas por esse numero volta 0 (a conta tem 5000)',
       '  busca de vendas: acha pelo Ref. ID (1) e nao acha pelo codigo de barras (0)');
-    ok(r.leitura.listar_nao_entregues.por_tag === 'respeitado (37 de 5000)', '⚠️ listar os nao entregues por TAG: respeitado (37 de 5000)');
+    ok(r.leitura.listar_nao_entregues.por_tag === 'respeitado (37 de 5000) — amostra dos 1 primeiros: 1 cancelled', '⚠️ listar os nao entregues por TAG: respeitado (37 de 5000), com a amostra do que veio');
     // Codex #637 (P2): mesmo total da busca sem filtro NAO e prova de "ignorado" — e tambem nao e "5000 nao entregues"
     ok(/^INCONCLUSIVO \(mesmo total da busca sem filtro: 5000; os resultados sao os MESMOS da busca sem filtro\)/.test(r.leitura.listar_nao_entregues.por_status_do_envio),
       '⚠️ Codex #637: mesmo total do controle, sem como conferir → INCONCLUSIVO, com o fato (resultados iguais aos da busca sem filtro) — nem "IGNORADO", nem "5000 nao entregues"');
@@ -213,6 +226,40 @@ const semPausa = { pausaMs: 0 };
     ok(r.consultas.volta_envio_formato_novo.logistic && r.consultas.volta_envio_formato_novo.logistic.direction === 'return' && !JSON.stringify(r).includes('Fulano'), '  com a direcao do envio (return) e sem o destinatario');
   }
 
+  { // ══ b795 — O CASO REAL (AMB, 21/11): o que a sonda devolveu, e o que a leitura tinha que ter dito ══
+    // O dono rodou a sonda em producao (b788). A leitura disse "SIM — o numero do codigo de barras aparece em 1 campo(s)":
+    // o campo era `query`, da busca de vendas pelo proprio codigo de barras — o ML devolve ali o TEXTO BUSCADO. Era o eco
+    // da minha pergunta, nao uma ligacao. Os dados diziam o contrario: `sibling`, `return_tracking_number` e
+    // `return_details` existem e vem vazios; o pedido nao tem reclamacao; e a busca por numero volta 0.
+    const ml = mlFalso({ ligacao: false, semMediations: true, conta: 'real' });
+    const r = await sondarEtiquetaDeVolta(Object.assign({ get: ml.get, vendedor: () => CONTA, barras: BARRAS, ref: REF }, semPausa));
+    ok(r.leitura.onde_o_codigo_de_barras_aparece.length === 0, '⚠️ b795: o ECO da busca (`query` = o texto que eu mesmo busquei) NAO conta como lugar onde o numero aparece (' + JSON.stringify(r.leitura.onde_o_codigo_de_barras_aparece) + ')');
+    ok(/^NAO APARECE — /.test(r.leitura.o_ml_liga_o_codigo_de_barras_a_venda), '⚠️ b795: a pergunta principal, no caso real: o ML NAO liga o codigo de barras a venda (a sonda tinha dito SIM) — ' + String(r.leitura.o_ml_liga_o_codigo_de_barras_a_venda).slice(0, 40));
+    ok(/^NAO — o ML respondeu 404/.test(r.leitura.codigo_de_barras_consultavel) && r.leitura.consultas_sem_conclusao.length === 0, '  e e conclusivo: 404 nas consultas diretas e nenhuma consulta sem conclusao');
+    ok(r.leitura.busca_de_vendas_pelo_codigo_de_barras === 'NAO ACHA — a busca de vendas por esse numero volta 0 (a conta tem 6180)' && r.leitura.busca_de_vendas_pelo_ref_id === 'NAO ACHA — a busca de vendas por esse numero volta 0 (a conta tem 6180)',
+      '⚠️ b795: a busca de vendas por numero que volta ZERO diz "NAO ACHA" (dizia "respeitado (0 de 6180)", que parecia "funciona")');
+    ok(r.leitura.listar_nao_entregues.por_tag === 'respeitado (254 de 6180) — amostra dos 5 primeiros: 5 paid'
+      && r.leitura.listar_nao_entregues.por_status_do_envio === 'respeitado (36 de 6180) — amostra dos 5 primeiros: 5 cancelled'
+      && r.leitura.listar_nao_entregues.cancelados === 'respeitado (322 de 6180) — amostra dos 5 primeiros: 5 cancelled',
+    '⚠️ b795: a listagem leva a AMOSTRA do que veio — a tag `not_delivered` traz venda PAGA a caminho (254), o status do envio traz as canceladas nao entregues (36): "254 nao entregues" seria leitura errada');
+    ok(r.consultas.vendas_buscando_o_codigo_de_barras.total === 0 && r.consultas.vendas_buscando_o_codigo_de_barras.http === 200 && !/"query"/.test(JSON.stringify(r.leitura)), '  (a consulta em si continua registrada: HTTP 200, total 0)');
+  }
+
+  { // a mesma classe: o eco tambem nao pode virar "ligacao" quando a busca ACHA a venda por outro motivo
+    const ml = mlFalso({ ligacao: false, semMediations: true });   // conta grande: a busca pelo Ref. ID acha a venda (1), a do codigo de barras nao (0)
+    const r = await sondarEtiquetaDeVolta(Object.assign({ get: ml.get, vendedor: () => CONTA, barras: BARRAS, ref: REF }, semPausa));
+    ok(r.leitura.onde_o_codigo_de_barras_aparece.length === 0 && /^NAO APARECE — /.test(r.leitura.o_ml_liga_o_codigo_de_barras_a_venda), '  sem ligacao nos dados, com as buscas respondendo: NAO APARECE (o eco de nenhuma busca entra)');
+    // e quando o numero esta DENTRO de um resultado da busca (ai sim e dado da venda), aparece — com o caminho do resultado
+    const get = async (c, h) => {
+      const x = await ml.get(c, h);
+      if (c.includes('&q=' + REF) && x.ok) x.data.results = [Object.assign({}, x.data.results[0], { shipping: { id: Number(REF), return_shipment: Number(BARRAS) } })];
+      return x;
+    };
+    const r2 = await sondarEtiquetaDeVolta(Object.assign({ get, vendedor: () => CONTA, barras: BARRAS, ref: REF }, semPausa));
+    ok(JSON.stringify(r2.leitura.onde_o_codigo_de_barras_aparece) === JSON.stringify([{ consulta: 'vendas_buscando_o_ref_id', caminho: 'results[0].shipping.return_shipment', valor: BARRAS }]) && /^SIM — /.test(r2.leitura.o_ml_liga_o_codigo_de_barras_a_venda),
+      '⚠️ numero DENTRO de um resultado da busca (dado da venda) continua contando — com o caminho do resultado (' + JSON.stringify(r2.leitura.onde_o_codigo_de_barras_aparece) + ')');
+  }
+
   { // so o codigo de barras (sem Ref. ID): roda o que da
     const ml = mlFalso();
     const r = await sondarEtiquetaDeVolta(Object.assign({ get: ml.get, vendedor: () => CONTA, barras: BARRAS }, semPausa));
@@ -249,7 +296,7 @@ const semPausa = { pausaMs: 0 };
       '⚠️ a busca pelo Ref. ID que acha a UNICA venda da conta: INCONCLUSIVO (e nao "o ML ignora a busca")');
     ok(/^INCONCLUSIVO \(mesmo total da busca sem filtro: 1; os 1 resultados conferidos casam com o filtro\)/.test(uma.leitura.listar_nao_entregues.por_tag)
       && /os 1 resultados conferidos casam com o filtro/.test(uma.leitura.listar_nao_entregues.cancelados), '  e quando da pra conferir, o fato vai junto: os resultados casam com o filtro');
-    ok(uma.leitura.busca_de_vendas_pelo_codigo_de_barras === 'respeitado (0 de 1)', '  total diferente do controle continua "respeitado" (0 de 1)');
+    ok(uma.leitura.busca_de_vendas_pelo_codigo_de_barras === 'NAO ACHA — a busca de vendas por esse numero volta 0 (a conta tem 1)', '  total diferente do controle: a busca por numero diz que NAO ACHA (0, a conta tem 1)');
     // (b) conta vazia: 0 nos dois
     const vazia = await rodar({ conta: 'vazia' });
     ok(/^INCONCLUSIVO \(mesmo total da busca sem filtro: 0; nenhum resultado pra conferir\)/.test(vazia.leitura.listar_nao_entregues.por_tag) && !/IGNORADO/.test(JSON.stringify(vazia.leitura)),
