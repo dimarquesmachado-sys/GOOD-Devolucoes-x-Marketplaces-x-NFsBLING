@@ -12,6 +12,9 @@
 // nao vazou).
 // b793 (dono, olhando a captura do b792: "escreve Painel Admin ao inves de so Painel e o restante perfeito"): o link do
 // admin no cracha diz "Painel Admin" (como a GOOD ja dizia) — e o estoquista continua sem ele.
+// b797 — o "+" do "Lançar Defeito" era ambar FIXO (#FFD54F), escolhido em cima do roxo. Na Girassol o cabecalho e
+// amarelo: o "+" sumia (medido: 1,1:1 contra o fundo). Qualquer coisa escrita em cima da cor da marca tem de dar pra LER
+// em cada empresa — aqui o contraste do "+" e medido contra as cores do cabecalho que o navegador de fato pintou.
 // Roda com: node test/triagem-topo-celular-navegador.test.js     (CAPTURA_TOPO=<pasta> salva as capturas)
 const { subir } = require('./_boot-real');
 let falhas = 0;
@@ -22,6 +25,12 @@ try { ({ chromium } = require('playwright')); } catch (e) { console.log('FALHA P
 const FABRICA = [{ nome: 'AMB', rota: '/amb', prefixo: 'AMB_' }, { nome: 'Girassol', rota: '/girassol', prefixo: 'GIRASSOL_' }];
 const CAPTURA = process.env.CAPTURA_TOPO || '';
 const perto = (a, b, folga = 1.5) => Math.abs(a - b) <= folga;
+// contraste entre duas cores "rgb(r, g, b)" (a conta do WCAG); cor transparente nao conta como fundo
+const rgb = (c) => { const m = String(c).match(/rgba?\(([^)]+)\)/); const n = m ? m[1].split(',').map((x) => parseFloat(x)) : []; return n.length >= 3 && (n.length < 4 || n[3] > 0) ? n.slice(0, 3) : null; };
+const luz = (c) => { const [r, g, b] = rgb(c).map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contraste = (a, b) => { const [x, y] = [luz(a), luz(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// o menor contraste do "+" contra as cores do fundo do cabecalho (3:1 e o minimo pra sinal grafico / texto grande em negrito)
+const contrasteDoMais = (m) => { const fundos = m.fundoDoTopo.filter((c) => rgb(c)); return m.mais && fundos.length ? Math.min(...fundos.map((f) => contraste(m.mais.cor, f))) : 0; };
 
 // roda DENTRO da pagina: as medidas do topo
 function medir() {
@@ -39,6 +48,9 @@ function medir() {
     titulo: caixa(header.querySelector('.topo-txt')), logo: caixa(header.querySelector('.topo-logo')),
     links: links.map((a) => { const r = document.createRange(); r.selectNodeContents(a); return Object.assign(caixa(a), { texto: a.innerText.replace(/\s+/g, ' ').trim(), cor: getComputedStyle(a).color, conteudo: caixa({ getBoundingClientRect: () => r.getBoundingClientRect() }) }); }),
     corDoTitulo: getComputedStyle(header.querySelector('h1')).color,
+    // b797: o "+" do "Lançar Defeito" e as cores que o navegador pintou no fundo do cabecalho (o gradiente da marca)
+    mais: (() => { const sp = links[1] && links[1].querySelector('span'); return sp ? { texto: sp.textContent.trim(), cor: getComputedStyle(sp).color } : null; })(),
+    fundoDoTopo: (getComputedStyle(header).backgroundImage + ' ' + getComputedStyle(header).backgroundColor).match(/rgba?\([^)]+\)/g) || [],
     cracha: Object.assign(caixa(cracha), { visivel: visivel(cracha), texto: cracha.innerText.replace(/\s+/g, ' ').trim() }),
     botaoMenu: visivel(document.getElementById('btnMenuTopo')), menu: visivel(document.getElementById('menuTopo')),
     avisoDentroDoDefeitos: !!document.querySelector('#linkDefeitos #avisoDefeitos'),
@@ -91,6 +103,7 @@ function medir() {
         ok(m.avisoDentroDoDefeitos, rot + 'o aviso de pendencia continua dentro do link Defeitos, a vista');
         ok(!m.vazaNaHorizontal && L.every((x) => x.left >= 0 && x.right <= m.larguraDaTela + 0.5), '⚠️' + rot + 'nada vaza pra fora da tela');
         ok(L.every((x) => x.cor === m.corDoTitulo), rot + 'o texto dos links tem a cor do titulo (a cor do cabecalho da empresa: ' + m.corDoTitulo + ')');
+        ok(m.mais && m.mais.texto === '+' && contrasteDoMais(m) >= 3, '⚠️' + rot + 'o "+" do "Lançar Defeito" da pra VER em cima do cabecalho desta empresa (' + (m.mais ? m.mais.cor : 'sem +') + ' sobre ' + m.fundoDoTopo.join(' / ') + ': ' + contrasteDoMais(m).toFixed(1) + ':1; minimo 3:1)');
         if (larg >= 360) ok(m.header.height < 215, rot + 'o topo ficou mais baixo que antes (' + Math.round(m.header.height) + 'px; eram 232)');
         ok(errosJs.length === 0, rot + 'sem erro de JS' + (errosJs.length ? ': ' + errosJs.slice(0, 2).join(' | ') : ''));
         if (CAPTURA && usuario === 'dono') await page.screenshot({ path: CAPTURA + '/topo-' + e.nome + '-' + larg + '.png', clip: { x: 0, y: 0, width: larg, height: Math.min(alt, Math.round(m.header.bottom) + 160) } });
@@ -109,6 +122,10 @@ function medir() {
           '⚠️  1280px: no computador o topo continua numa linha so — titulo, os 4 links e o usuario a direita');
         ok(m.botaoMenu === false && m.header.height < 100 && !m.vazaNaHorizontal, '  1280px: sem ⋮, topo baixo (' + Math.round(m.header.height) + 'px) e sem vazar');
         ok(L.every((x) => x.cor === m.corDoTitulo), '  1280px: e o texto dos links tambem tem a cor do titulo (' + m.corDoTitulo + ')');
+        ok(m.mais && contrasteDoMais(m) >= 3, '⚠️  1280px: e o "+" do "Lançar Defeito" tambem da pra ver no computador (' + contrasteDoMais(m).toFixed(1) + ':1)');
+        // a AMB nao muda um pixel (o ambar foi escolhido em cima do roxo dela); onde o texto do cabecalho e escuro, o "+" acompanha o texto
+        if (e.nome === 'AMB') ok(m.mais && m.mais.cor === 'rgb(255, 213, 79)', '⚠️  AMB: o "+" continua AMBAR (#FFD54F), como era — ' + (m.mais && m.mais.cor));
+        else ok(m.mais && m.mais.cor === m.corDoTitulo, '⚠️  ' + e.nome + ': cabecalho claro — o "+" tem a cor do texto do cabecalho (' + (m.mais && m.mais.cor) + ')');
         await ctx.close();
       }
       // ══ largura do meio (tablet / celular deitado): continua como era — os links descem inteiros, sem vazar ══
