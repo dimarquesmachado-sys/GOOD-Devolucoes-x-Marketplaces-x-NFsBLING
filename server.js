@@ -3810,7 +3810,11 @@ app.post('/api/triagem/problema', requerEstoquista, exigirFotosValidas, async (r
   }
   const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
   if (fotos.length < 6) {
-    return res.status(400).json({ ok: false, erro: `Minimo 6 fotos obrigatorias (recebido: ${fotos.length})` });
+    // b778 (pedido do dono 21/11): o ADMIN pode reportar problema SEM as 6 fotos, marcando "Sem fotos" na tela.
+    // So com a sessao de admin — o estoquista que mandar sem_fotos leva 403 (a regra dele continua 6 fotos).
+    const pedeSemFotos = dados.sem_fotos === true;
+    if (pedeSemFotos && !adminOk(req)) return res.status(403).json({ ok: false, erro: 'reportar problema sem fotos e so pro admin' });
+    if (!pedeSemFotos) return res.status(400).json({ ok: false, erro: `Minimo 6 fotos obrigatorias (recebido: ${fotos.length})` });
   }
 
   // b512 - de-para resolvido ANTES da checagem de duplicata (sem await entre ela e o insert)

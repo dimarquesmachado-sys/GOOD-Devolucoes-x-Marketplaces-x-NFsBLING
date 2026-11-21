@@ -697,9 +697,15 @@
         </div>
       </div>
 
+      <!-- b778 (pedido do dono 21/11): SO O ADMIN pode reportar problema SEM as 6 fotos. A caixa nasce escondida
+           e so aparece quando a sessao e de admin (auth.js -> window.__ehAdmin); o servidor confere de novo. -->
+      <label id="boxSemFotos" style="display:none; margin:8px 0; padding:8px 10px; border:2px dashed #6a1b9a; border-radius:10px; background:#f3e5f5; font-size:13px; color:#4a148c;">
+        <input type="checkbox" id="chkSemFotos" onchange="toggleSemFotos()"> <b>Sem fotos</b> (só admin) — reporta o problema sem tirar as 6 fotos
+      </label>
+
       <div class="modal-acoes">
         <button class="btn-cancelar" onclick="fecharModal('modalProblema')">Cancelar</button>
-        <button class="triagem-btn-problema btn-action" onclick="abrirCamera()">
+        <button class="triagem-btn-problema btn-action" id="btnProblemaAcao" onclick="acaoProblema()">
           📷 Abrir câmera
         </button>
       </div>
@@ -764,14 +770,14 @@
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
   <script src="js-AMB/base-amb.js?v=b513"></script>
   <script src="js-AMB/helpers.js?v=b478"></script>
-  <script src="js-AMB/auth.js?v=b744"></script>
+  <script src="js-AMB/auth.js?v=b778"></script>
   <script src="js-AMB/scanner.js?v=b478"></script>
   <script src="js-AMB/camera.js?v=b761"></script>
   <script src="js-AMB/bipagem.js?v=b667"></script>
   <script src="js-AMB/busca.js?v=b771"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js" integrity="sha384-eMCJjoa43DLpNZRyAjocYkZuahMjTlfLpm5i5MD/QGBM8dBbMG0xtjp50LA4vyhe" crossorigin="anonymous"></script>
   <script src="js-AMB/etiqueta.js?v=b667"></script>
-  <script src="js-AMB/triagem.js?v=b721"></script>
+  <script src="js-AMB/triagem.js?v=b778"></script>
   <!-- b779 (V-08): versao EXATA + integrity — o navegador recusa o arquivo se o CDN entregar outro byte (o `@5` mudava sozinho a cada versao nova). Hash conferido por test/scripts-externos-integridade.test.js -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
   <!-- v5 - le QR code no COMPUTADOR (o BarcodeDetector so existe no Android) -->
