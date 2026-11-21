@@ -10,6 +10,8 @@
 // largura da faixa; o usuario fica centrado embaixo; o ⋮ nao aparece; nada vaza pra fora da tela. E no computador o
 // topo continua numa linha so, como era. Roda nas duas empresas da fabrica (e confere que a GOOD, que tem a tela dela,
 // nao vazou).
+// b793 (dono, olhando a captura do b792: "escreve Painel Admin ao inves de so Painel e o restante perfeito"): o link do
+// admin no cracha diz "Painel Admin" (como a GOOD ja dizia) — e o estoquista continua sem ele.
 // Roda com: node test/triagem-topo-celular-navegador.test.js     (CAPTURA_TOPO=<pasta> salva as capturas)
 const { subir } = require('./_boot-real');
 let falhas = 0;
@@ -83,7 +85,7 @@ function medir() {
         ok(L.length === 4 && L.every((x) => perto(x.conteudo.cx, x.cx, 3) && x.conteudo.left >= x.left && x.conteudo.right <= x.right), rot + 'o texto de cada um centrado e inteiro dentro do proprio botao');
         ok(L.length === 4 && perto(L[0].left, m.dentro.left, 2) && perto(L[1].right, m.dentro.right, 2), '⚠️' + rot + 'a grade ocupa a largura da faixa, de ponta a ponta (nao fica encostada num lado)');
         ok(L.length === 4 && L[0].top >= Math.max(m.titulo.bottom, m.logo.bottom) - 1, rot + 'embaixo do logo e do titulo');
-        ok(m.cracha.visivel && perto(m.cracha.cx, m.header.cx, 2) && m.cracha.top >= L[3].bottom - 1 && new RegExp(usuario === 'dono' ? 'dono.*Painel.*sair' : 'esto.*sair').test(m.cracha.texto),
+        ok(m.cracha.visivel && perto(m.cracha.cx, m.header.cx, 2) && m.cracha.top >= L[3].bottom - 1 && new RegExp(usuario === 'dono' ? 'dono.*Painel Admin.*sair' : '^\\S+ esto sair$').test(m.cracha.texto),
           '⚠️' + rot + 'o usuario fica CENTRADO, embaixo dos links (' + m.cracha.texto + ')');
         ok(m.botaoMenu === false && m.menu === false, '⚠️' + rot + 'o botao ⋮ nao aparece mais largado no topo (ele so repetia o que ja esta na tela)');
         ok(m.avisoDentroDoDefeitos, rot + 'o aviso de pendencia continua dentro do link Defeitos, a vista');
