@@ -12,6 +12,8 @@
 //   6. upload que falha = rodada FALHA com o motivo.
 //  10. (b802, V-18) falha que NAO passa sozinha: o diario ESPERA entre as tentativas (proximo minuto, 5, 15, 60 min) —
 //      eram 1.230 rodadas num dia, cada uma lendo todas as tabelas; da certo = zera; dia novo recomeca; o manual nao espera.
+//  11. (b804, V-19) o dia marcado como FEITO e o da pasta que foi pro Storage (o carimbo), nao o da hora em que a rodada
+//      acabou: rodada que atravessa a meia-noite marcava o dia seguinte como feito — 3 backups em 6 dias, em silencio.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -243,6 +245,61 @@ function storageFalso({ falharUpload } = {}) {
       ok(rot11.tick() === true, '⚠️ 00:00 do dia 6: a espera de ontem nao vale — o diario dispara');
       for (let i = 0; i < 2000 && rot11.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5));
       ok(horas.join(' ') === '00:00' && rot11.diagnostico().falhas_seguidas === 1, '  e a escada recomecou do zero (' + horas.join(' ') + ', ' + rot11.diagnostico().falhas_seguidas + ')');
+    }
+
+    // ── 11. b804 (V-19): o dia marcado como feito e o da PASTA que foi pro Storage, nao o da hora em que a rodada acabou ──
+    {
+      console.log('── 11. rodada que atravessa a meia-noite nao marca o dia seguinte como feito');
+      const brasilia = () => new Date(relogio.getTime() - 3 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
+      const pastasDe = (st, bucket) => [...new Set([...st.objetos.keys()].filter((k) => k.startsWith(bucket + '/')).map((k) => k.split('/')[1]))].sort();
+      const esperar = async (rot) => { for (let i = 0; i < 2000 && rot.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5)); };
+      // um tick por minuto, como o timer de producao, ate a hora dada
+      const andarAte = async (rot, ate) => { const fim = new Date(ate).getTime(); while (relogio.getTime() < fim) { if (rot.tick()) await esperar(rot); relogio = new Date(relogio.getTime() + 60000); } };
+
+      // (a) BACKUP_HORA=23:59 e a rodada leva 2 minutos: comeca no dia 8, termina 00:01 do dia 9
+      const stA = storageFalso(); const disparos = [];
+      const rotA = criarRotina({
+        rodarBackup: async (o) => { disparos.push(brasilia()); const r = await rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)); relogio = new Date(relogio.getTime() + 2 * 60000); return r; },
+        obterSupabase: () => stA.api, bucket: 'bk11a', hora: '23:59', agora: () => relogio, log: silencio,
+      });
+      relogio = new Date('2026-12-08T03:00:00Z');   // 00:00 de Brasilia do dia 8
+      await andarAte(rotA, '2026-12-09T03:05:00Z');   // ate 00:05 do dia 9
+      let dA = rotA.diagnostico();
+      ok(disparos.join(' | ') === '2026-12-08 23:59' && dA.ultimo.ok === true && dA.ultimo.fim === '2026-12-09T03:01:00.000Z' && pastasDe(stA, 'bk11a').join(' ') === '2026-12-09T02-59-00',
+        '  a rodada das 23:59 do dia 8 acabou 00:01 do dia 9; a pasta leva o carimbo de quando comecou (' + pastasDe(stA, 'bk11a').join(' ') + ', fim ' + dA.ultimo.fim + ')');
+      ok(dA.ultimo_dia === '2026-12-08', '⚠️ o dia marcado como feito e o da pasta (dia 8), nao o dia em que a rodada acabou (' + dA.ultimo_dia + ')');
+      await andarAte(rotA, '2026-12-14T03:00:00Z');   // ate o fim do dia 13
+      ok(disparos.length === 6 && pastasDe(stA, 'bk11a').length === 6, '⚠️ 6 dias, 6 backups — eram 3, um dia sim e um dia nao (' + disparos.length + ' rodadas, ' + pastasDe(stA, 'bk11a').length + ' pastas)');
+      ok(disparos.join(' | ') === [8, 9, 10, 11, 12, 13].map((n) => '2026-12-' + String(n).padStart(2, '0') + ' 23:59').join(' | '), '  uma por dia, sempre as 23:59 (' + disparos.join(' | ') + ')');
+
+      // (b) reinicio no ultimo minuto do dia: a checagem "ja fiz hoje" sai 23:59 do dia 8 e a resposta do Storage chega 00:01 do dia 9
+      const stB = storageFalso(); stB.buckets.add('bk11b');
+      stB.objetos.set('bk11b/2026-12-08T06-30-00/manifesto.json', Buffer.from('{}'));   // backup completo do dia 8 (03:30 de Brasilia)
+      const fromB = stB.api.storage.from; let demora = true;
+      stB.api.storage.from = (b) => { const f = fromB(b); const listReal = f.list; return Object.assign(f, { list: async (...a) => { const r = await listReal(...a); if (demora) { demora = false; relogio = new Date(relogio.getTime() + 2 * 60000); } return r; } }); };
+      let rodadasB = 0;
+      const rotB = criarRotina({ rodarBackup: async (o) => { rodadasB++; return rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)); }, obterSupabase: () => stB.api, bucket: 'bk11b', hora: '03:30', agora: () => relogio, log: silencio });
+      relogio = new Date('2026-12-09T02:59:00Z');   // 23:59 de Brasilia do dia 8
+      ok(rotB.tick() === true, '  processo novo as 23:59 do dia 8 — o tick dispara a checagem'); await esperar(rotB);
+      ok(rodadasB === 0 && rotB.diagnostico().ultimo.pulado && rotB.diagnostico().ultimo_dia === '2026-12-08',
+        '⚠️ a checagem achou o backup do dia 8 e marcou o dia 8 — nao o dia 9, em que a resposta chegou (' + rotB.diagnostico().ultimo_dia + ', rodadas ' + rodadasB + ')');
+      stB.objetos.set('bk11b/2026-12-09T05-00-00/good/d.jsonl.gz', Buffer.from('x'));   // resto de um upload do dia 9 que morreu antes do manifesto
+      relogio = new Date('2026-12-09T06:30:00Z');   // 03:30 do dia 9
+      ok(rotB.tick() === true, '⚠️ 03:30 do dia 9 — o diario dispara (o dia 9 ainda nao tem pasta completa)'); await esperar(rotB);
+      ok(rodadasB === 1 && rotB.diagnostico().ultimo_dia === '2026-12-09' && pastasDe(stB, 'bk11b').join(' ') === '2026-12-08T06-30-00 2026-12-09T06-30-00',
+        '⚠️ rodou 1x — pasta de hoje SEM manifesto nao conta como "ja fiz hoje" — e o dia 9 tem a pasta dele (' + pastasDe(stB, 'bk11b').join(' ') + ', rodadas ' + rodadasB + ')');
+
+      // (c) pasta com nome fora do padrao (o script de hoje nao gera): vale o dia do relogio, como era — o diario nao pode ficar rodando a cada minuto
+      const stC = storageFalso(); let rodadasC = 0;
+      const rotC = criarRotina({
+        rodarBackup: async (o) => { rodadasC++; const raiz = path.join(o.saida, 'sem-carimbo'); fs.mkdirSync(raiz, { recursive: true }); fs.writeFileSync(path.join(raiz, 'manifesto.json'), '{}'); return { raiz, manifesto: { empresas: {}, erros: [] } }; },
+        obterSupabase: () => stC.api, bucket: 'bk11c', hora: '03:30', agora: () => relogio, log: silencio,
+      });
+      relogio = new Date('2026-12-10T06:30:00Z');
+      ok(rotC.tick() === true, '  pasta sem carimbo: a rodada dispara'); await esperar(rotC);
+      ok(rodadasC === 1 && rotC.diagnostico().ultimo.ok === true && rotC.diagnostico().ultimo_dia === '2026-12-10', '⚠️ pasta com nome fora do padrao: marca o dia do relogio (' + rotC.diagnostico().ultimo_dia + ')');
+      relogio = new Date('2026-12-10T06:31:00Z');
+      ok(rotC.tick() === false && rodadasC === 1, '  e o minuto seguinte nao roda de novo');
     }
   } catch (err) {
     falhas++; console.log('FALHA ' + (err && err.stack || err));
