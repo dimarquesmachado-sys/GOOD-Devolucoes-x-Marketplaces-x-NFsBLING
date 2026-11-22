@@ -38,6 +38,10 @@ Storage não responder nessa checagem, a rotina **não** roda às cegas: registr
 (é o último arquivo enviado); só as completas contam pros 14 dias — pasta de rodada que morreu no meio é apagada
 na rodada seguinte.
 
+**De que dia é uma rodada (b804):** do dia da **pasta** dela — o carimbo, a hora em que começou. Uma rodada que começa
+antes da meia-noite e termina depois conta pro dia em que começou; o dia seguinte roda a dele. (Antes contava o dia
+em que acabava: com `BACKUP_HORA=23:59` saía backup um dia sim, um dia não. Com as 03:30 padrão não acontecia.)
+
 **Quando a rodada diária falha (b802):** ela tenta de novo no minuto seguinte (falha passageira se resolve aí); se falhar
 de novo, espera **5 min**, depois **15 min**, e daí em diante **60 min** — no máximo 24 rodadas num dia inteiro de falha
 (eram 1.230, uma por minuto, cada uma lendo todas as tabelas). Deu certo, zera; no dia seguinte a escada recomeça. O
