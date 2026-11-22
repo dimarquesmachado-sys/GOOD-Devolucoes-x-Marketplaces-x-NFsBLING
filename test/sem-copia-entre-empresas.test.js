@@ -131,6 +131,24 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
      '  e nao tenta se carregar por require (ponte da epoca da copia)');
 }
 
+// ── b806 (V-21): a fabrica mora em UM lugar so — amb-devolucoes/ ─────
+// Ate o b805 havia uma pasta `lib-AMB/` na RAIZ com 6 copias velhas de modulos da fabrica (o magalu com 211 linhas,
+// contra 794 do de verdade). Nenhum codigo carregava e a verifica nem olhava — mas quem procurava um texto achava o
+// arquivo errado (a copia ainda dizia "Magalu da AMB", que o V-17 tirou do de verdade).
+{
+  const fora = [];
+  const andar = (dir, rel) => {
+    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (d.name === 'node_modules' || d.name === '.git') continue;
+      const r = rel ? rel + '/' + d.name : d.name;
+      if (d.isDirectory()) { if (r !== 'amb-devolucoes') andar(path.join(dir, d.name), r); }
+      else if (/-AMB\.js$/.test(d.name)) fora.push(r);
+    }
+  };
+  andar(RAIZ, '');
+  ok(fora.length === 0, '⚠️ todo modulo *-AMB.js mora em amb-devolucoes/ — nenhuma copia solta em outra pasta' + (fora.length ? ' — fora: ' + fora.sort().join(', ') : ''));
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
