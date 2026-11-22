@@ -18,10 +18,14 @@ const { createClient } = require('@supabase/supabase-js');
 const { subirPostgrest } = require('./_postgrest-falso');
 const { rodar, tabelasDaEmpresa } = require('../scripts/backup-tabelas');
 const { restaurar } = require('../scripts/restaurar-tabelas');
-const { obterEmpresa } = require('../lib/empresas');
+const { obterEmpresa, listarEmpresas } = require('../lib/empresas');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-const CHAVES = ['good', 'ambtotal', 'girassol'];
+// b801 (V-17, ensaio de CNPJ novo): as empresas vem do REGISTRO. Era a lista ['good','ambtotal','girassol'] e a conta "3"
+// cravadas — o PR que colasse a ficha de uma empresa nova nascia com este teste vermelho (o backup sem `--empresas` le
+// TODAS as do registro: 4 empresas, 36 tabelas).
+const CHAVES = listarEmpresas().map((e) => e.chave);
+ok(['good', 'ambtotal', 'girassol'].every((k) => CHAVES.includes(k)), '  o registro traz as empresas de hoje (' + CHAVES.join(', ') + ')');
 
 (async () => {
   // b774 (ensaio real de 20/11): espreita_notas da GOOD, sku_depara e devolucao_tags NAO tem coluna id — o falso sabe
@@ -64,7 +68,7 @@ const CHAVES = ['good', 'ambtotal', 'girassol'];
   // Codex #622: so as globais SUPABASE_URL/KEY no env (como o servidor aceita) tambem servem
   const guardadas = {}; for (const k of CHAVES) { const f = obterEmpresa(k); for (const n of ['SUPABASE_URL', 'SUPABASE_KEY']) { guardadas[f.prefixoEnv + n] = process.env[f.prefixoEnv + n]; delete process.env[f.prefixoEnv + n]; } }
   const soGlobal = await rodar({ saida, pagina: 3, log: silencio, agora: () => new Date('2026-11-18T12:30:00Z') });
-  ok(soGlobal.manifesto.erros.length === 0 && Object.keys(soGlobal.manifesto.empresas).length === 3, '⚠️ so com SUPABASE_URL/KEY globais as 3 empresas entram (' + Object.keys(soGlobal.manifesto.empresas).join(',') + ')');
+  ok(soGlobal.manifesto.erros.length === 0 && Object.keys(soGlobal.manifesto.empresas).sort().join() === [...CHAVES].sort().join(), '⚠️ so com SUPABASE_URL/KEY globais as ' + CHAVES.length + ' empresas do registro entram (' + Object.keys(soGlobal.manifesto.empresas).join(',') + ')');
   Object.assign(process.env, guardadas);
   for (const k of CHAVES) {
     const f = obterEmpresa(k);
@@ -79,7 +83,7 @@ const CHAVES = ['good', 'ambtotal', 'girassol'];
   // cada empresa so LEU as suas tabelas (o log do falso registra tabela por requisicao)
   const lidas = [...new Set(pg.pedidos.filter((p) => p.metodo === 'GET').map((p) => p.tabela))];
   const todas = CHAVES.flatMap((k) => tabelasDaEmpresa(obterEmpresa(k)));
-  ok(lidas.length === todas.length && lidas.every((t) => todas.includes(t)), '  o backup leu exatamente as ' + todas.length + ' tabelas das 3 empresas (' + lidas.length + ')');
+  ok(lidas.length === todas.length && lidas.every((t) => todas.includes(t)), '  o backup leu exatamente as ' + todas.length + ' tabelas das ' + CHAVES.length + ' empresas (' + lidas.length + ')');
 
   // ── falha de uma tabela nao vira arquivo vazio ──
   pg.ganchos.interceptar = ({ metodo, tabela }) => (metodo === 'GET' && tabela === 'recados_amb' ? { status: 500, corpo: { message: 'statement timeout' } } : null);

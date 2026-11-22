@@ -199,7 +199,25 @@ function gerar(chave, nome, sufixoDados) {
   // da outra. Lendo do registro, as duas nunca mais divergem.
   const envs = ENVS_OBRIGATORIAS.map((e) => PREF + e);
 
-  return { ok: true, chave, nome, suf, PREF, ficha, contrato, envs };
+  // b801 (V-17, ensaio de CNPJ novo, 22/11) — OS CANAIS. A lista acima e o minimo pra empresa montar (Bling + ML + gente).
+  // No ensaio, o que faltava pra cada canal so aparecia DEPOIS, um por vez, na tela de conectar e na sonda. Aqui vai
+  // tudo de uma vez — com os nomes que o servidor le de verdade (test/empresa-nova-de-ponta-a-ponta confere no /config).
+  const canais = [
+    { nome: 'Magalu',
+      envs: [PREF + 'MAGALU_CLIENT_ID', PREF + 'MAGALU_CLIENT_SECRET', PREF + 'MAGALU_TENANT_ID'],
+      nota: 'client PROPRIO desta empresa (cria-se pela CLI `idm`, logado na conta Magalu DELA) — nunca o de outra. '
+        + 'O tenant so da pra pegar depois de conectar: a tela de "Magalu conectado" ensina onde.' },
+    { nome: 'Shopee',
+      envs: [PREF + 'SHOPEE_LOJA_KEY'],
+      nota: `so se a loja no servico da Shopee tiver outro nome que nao "${suf}" (o padrao e a chave de dados). `
+        + 'SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY ja existem, sem prefixo, e valem pra todas; a loja tem que estar autorizada la.' },
+    { nome: 'E-mail',
+      envs: [PREF + 'EMAIL_HOST', PREF + 'EMAIL_PORT', PREF + 'EMAIL_USER', PREF + 'EMAIL_PASS', PREF + 'EMAIL_PARA'],
+      nota: 'aviso de problema por e-mail. Sem elas a triagem funciona igual, so nao avisa (PORT e PARA sao opcionais). '
+        + 'O servidor nunca usa a conta de e-mail de outra empresa.' },
+  ];
+
+  return { ok: true, chave, nome, suf, PREF, ficha, contrato, envs, canais };
 }
 
 module.exports = { gerar, VALIDA_CHAVE };
@@ -261,11 +279,36 @@ if (require.main === module) {
   console.log('   ⚠️ Sem padrão de propósito. Emitir com o id de outra empresa é');
   console.log('   NF errada no CNPJ errado.');
   console.log('');
+  console.log('════ 6. os canais — cada um liga quando a credencial dele chega ════');
+  console.log('');
+  for (const c of r.canais) {
+    console.log('   ' + c.nome + ':');
+    for (const e of c.envs) console.log('      ' + e);
+    console.log('      (' + c.nota + ')');
+    console.log('');
+  }
+  console.log('   📌 Token NÃO se digita — nem os dois `*_REFRESH_TOKEN` da lista 4. Os tokens do Bling, do ML e');
+  console.log(`   do Magalu nascem em /${r.chave}/conectar (com a ADMIN_KEY): clique e autorize logado na conta`);
+  console.log('   DESTA empresa. A tela de volta diz "Token gravado no Render: sim" — se disser NAO, o token');
+  console.log('   vale só até o próximo reinício.');
+  console.log('');
+  console.log('════ 7. o que é do OUTRO serviço (Mover-Pedidos) ════');
+  console.log('');
+  console.log('   - o `contrato-empresas.json` é espelhado byte a byte lá: PR gêmeo, e o DAQUI entra primeiro;');
+  console.log(`   - o painel do checkout dela (\`${r.chave}-checkout-offline\`, ou o nome que tiver — declare em`);
+  console.log('     `pastaCheckout` na ficha): o código de barras do "produto errado" pergunta lá;');
+  console.log('   - a loja no TikTok (`TIKTOK_LOJAS` + `/tiktok/painel` de lá), se a empresa vender no TikTok;');
+  console.log('   - a extensão (Toolbox): uma entrada em `toolbox-extensao/tb-empresas.js`.');
+  console.log('');
   console.log('════ e por último ════');
   console.log('');
   console.log(`   node -e "console.log(require('./lib/empresas').conferirEmpresa('${r.chave}'))"`);
   console.log('');
   console.log('   Quando disser `pronta: true`, aí sim vire `ativa_em.devolucoes`');
   console.log('   para true. A ativação é o ÚLTIMO passo — nunca o primeiro.');
+  console.log('');
+  console.log(`   Depois de ativar e conectar: a sonda (/api/admin/sonda-empresa/${r.chave}, sessão de admin ou`);
+  console.log('   ADMIN_KEY) diz o que ainda falta, sem gravar nada. O checklist com a PROVA de cada linha,');
+  console.log('   até o primeiro pacote de verdade, é o de docs/PLUGAR-EMPRESA-NOVA.md.');
   console.log('');
 }

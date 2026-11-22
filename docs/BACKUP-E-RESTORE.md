@@ -61,6 +61,11 @@ node scripts/backup-tabelas.js --empresas=girassol --saida=/tmp/bk
 ```
 
 - Tabela que falha **não vira arquivo vazio**: entra no manifesto como erro e o processo termina ≠ 0.
+- **Empresa nova que ainda não tem tabela (b801):** a ficha de um CNPJ novo entra no registro antes das tabelas dele. Enquanto
+  o contrato disser `ativa_em.devolucoes: false` **e** nenhuma tabela dela existir, o backup sem `--empresas` (o diário) **pula**
+  essa empresa e anota em `manifesto.puladas` (aparece também no estado da rotina, `/api/admin/backup`) — antes, as 9 tabelas
+  que não existiam derrubavam a rodada inteira e nada das outras empresas era enviado. Continua sendo **erro**: empresa ligada
+  sem tabela, só parte das tabelas faltando, falta de permissão, e quem pede a empresa pelo nome (`--empresas=<ela>`).
 - Cada rodada ganha **pasta própria** (carimbo com segundos; se já existir, `-2`, `-3`…) — nunca mistura
   arquivos de tempos diferentes. `--pagina` vai no máximo a 1000 (teto do PostgREST; acima disso o
   backup sairia truncado em silêncio — o script recusa).

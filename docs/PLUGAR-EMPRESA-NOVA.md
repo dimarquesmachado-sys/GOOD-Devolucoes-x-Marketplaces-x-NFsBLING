@@ -285,3 +285,9 @@ quando **cada linha abaixo tem a prova ao lado**. A ordem é a ordem de dependê
 | 9 | **Backup** antes de abrir pro galpão | `scripts/backup-tabelas.js --empresas=<id>` | manifesto com todas as tabelas e zero erro; guardar fora do Render/Supabase (`docs/BACKUP-E-RESTORE.md`) |
 
 Regra: **ficha sem as linhas 2–9 não é empresa embarcada** — é uma empresa que vai quebrar na primeira NF.
+
+**Ensaiado (V-17, 22/11):** `test/empresa-nova-de-ponta-a-ponta.test.js` percorre as linhas 1, 2, 5 e 6 com uma empresa de
+mentira (ficha do gerador → tabelas num Postgres de verdade → `server.js` → tela, login, triagem). O gerador
+(`node scripts/nova-empresa.js <chave> "<Nome>"`) lista também as envs dos canais (Magalu, Shopee, e-mail) e o que é do
+Mover-Pedidos. E a ficha pode entrar **antes** das tabelas sem derrubar nada: desligada e sem tabela, a empresa nova fica
+fora do backup diário (anotada em `puladas`) até o provisionamento — `test/backup-empresa-nova-sem-tabelas.test.js`.
