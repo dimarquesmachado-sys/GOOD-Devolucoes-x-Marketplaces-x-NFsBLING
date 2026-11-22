@@ -138,8 +138,8 @@ console.log('\n── 5. a tela nova chega no navegador (as 3 empresas carregam 
 {
   const good = ler('public/index.html'), fab = ler('amb-devolucoes/public-AMB/index-AMB.html');
   const n = (re, s) => Number((s.match(re) || [])[1]) || 0;
-  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4796 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4798, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; os dois mudaram de novo no b796)');
-  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 796 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 796, '⚠️ fabrica: idem');
+  ok(n(/js\/busca\.js\?v=(\d+)/, good) >= 4798 && n(/js\/colar-imagem\.js\?v=(\d+)/, good) >= 4798, '⚠️ GOOD: ?v= do busca.js e do colar-imagem.js bumpados (o navegador pega os arquivos novos; os dois mudaram no b796 e o busca.js de novo no b798)');
+  ok(n(/js-AMB\/busca\.js\?v=b(\d+)/, fab) >= 798 && n(/js-AMB\/colar-imagem\.js\?v=b(\d+)/, fab) >= 796, '⚠️ fabrica: idem');
   for (const [nome, html] of [['GOOD', good], ['fabrica', fab]]) {
     const cola = entreMarcadores(html, 'id="modalColaBipe"', 'SHOPEE</div>');
     ok(/SEM nome de cliente/.test(cola) && /Ref\. ID/.test(cola) && /pacote MELI/.test(cola), '  ' + nome + ': a colinha "O que bipar" explica o pacote MELI e o Ref. ID');
