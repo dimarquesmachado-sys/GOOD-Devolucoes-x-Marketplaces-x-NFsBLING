@@ -10,6 +10,8 @@
 //   5. o relogio: o tick so dispara uma vez por dia, na hora (Brasilia), ou depois se o servidor estava fora; nunca
 //      antes, nunca duas vezes no mesmo dia, e no dia seguinte dispara de novo;
 //   6. upload que falha = rodada FALHA com o motivo.
+//  10. (b802, V-18) falha que NAO passa sozinha: o diario ESPERA entre as tentativas (proximo minuto, 5, 15, 60 min) —
+//      eram 1.230 rodadas num dia, cada uma lendo todas as tabelas; da certo = zera; dia novo recomeca; o manual nao espera.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -19,7 +21,7 @@ const { subirPostgrest } = require('./_postgrest-falso');
 const { obterEmpresa } = require('../lib/empresas');
 const CHAVES = ['good', 'ambtotal', 'girassol'];
 const { rodar } = require('../scripts/backup-tabelas');
-const { criarRotina } = require('../lib/backup-rotina');
+const { criarRotina, ESPERAS_MIN } = require('../lib/backup-rotina');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
@@ -169,6 +171,79 @@ function storageFalso({ falharUpload } = {}) {
     const mk = fs.mkdtempSync; fs.mkdtempSync = () => { const e = new Error('ENOSPC: simulado'); e.code = 'ENOSPC'; throw e; };
     let r9; try { r9 = await rot9.executar({ motivo: 'manual' }); } finally { fs.mkdtempSync = mk; }
     ok(r9.ok === false && /ENOSPC/.test(r9.erro) && rot9.diagnostico().rodando === false, '⚠️ mkdtemp falha = rodada FALHA registrada e rodando=false (' + r9.erro + ')');
+
+    // ── 10. b802 (V-18): falha que nao passa sozinha — o diario ESPERA entre as tentativas ──
+    {
+      console.log('── 10. o diario que falha espera antes de tentar de novo');
+      const st10 = storageFalso(); st10.buckets.add('bk10');
+      let quebrado = true; const horas = []; const logs10 = [];
+      const brasilia = () => new Date(relogio.getTime() - 3 * 3600000).toISOString().slice(11, 16);
+      const rot10 = criarRotina({
+        rodarBackup: async (o) => {
+          horas.push(brasilia());
+          if (!quebrado) return rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o));
+          const raiz = path.join(o.saida, '2026-12-01T06-30-00'); fs.mkdirSync(raiz, { recursive: true });
+          return { raiz, manifesto: { empresas: {}, erros: [{ empresa: 'girassol', tabela: 'devolucoes_girassol', erro: 'simulado: a tabela sumiu' }] } };
+        },
+        obterSupabase: () => st10.api, bucket: 'bk10', hora: '03:30', agora: () => relogio, log: (l) => logs10.push(l),
+      });
+      const terminar = async () => { for (let i = 0; i < 2000 && rot10.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5)); };
+      // um tick por minuto, como o timer de producao
+      const andar = async (de, minutos) => { relogio = new Date(de); for (let m = 0; m < minutos; m++) { if (rot10.tick()) await terminar(); relogio = new Date(relogio.getTime() + 60000); } };
+
+      ok(JSON.stringify(ESPERAS_MIN) === '[0,5,15,60]', '  a escada: proximo minuto, 5, 15 e 60 min (' + JSON.stringify(ESPERAS_MIN) + ')');
+      await andar('2026-12-01T06:00:00Z', 21 * 60);   // das 03:00 as 23:59 de Brasilia
+      ok(horas.length === 24, '⚠️ um dia inteiro com a falha no ar: ' + horas.length + ' rodadas (eram 1.230, uma por minuto)');
+      ok(horas.slice(0, 6).join(' ') === '03:30 03:31 03:36 03:51 04:51 05:51' && horas[horas.length - 1] === '23:51', '⚠️ na hora, no minuto seguinte, +5, +15 e depois de hora em hora (' + horas.slice(0, 6).join(' ') + ' … ' + horas[horas.length - 1] + ')');
+      let d = rot10.diagnostico();
+      ok(d.ultimo_dia === null && d.ultimo.ok === false && d.falhas_seguidas === 24 && d.proxima_tentativa === '2026-12-02T03:51:00.000Z',
+        '⚠️ o estado diz quantas falhou e quando tenta de novo (' + JSON.stringify({ falhas_seguidas: d.falhas_seguidas, proxima_tentativa: d.proxima_tentativa }) + ') — e o dia NAO e marcado como feito');
+      ok(st10.chamadas.upload === 0 && logs10.filter((l) => /tento de novo/.test(l)).length === 24 && /1a falha de hoje — tento de novo no proximo minuto/.test(logs10.join('\n')) && /4a falha de hoje — tento de novo em 60 min/.test(logs10.join('\n')),
+        '  nada foi pro Storage, e cada falha deixa no log quando sera a proxima');
+
+      // dia seguinte, ainda quebrado: a escada RECOMECA (uma falha passageira de hoje nao herda os 60 min de ontem)
+      horas.length = 0;
+      await andar('2026-12-02T06:00:00Z', 34);   // 03:00 → 03:33
+      ok(horas.join(' ') === '03:30 03:31' && rot10.diagnostico().falhas_seguidas === 2, '⚠️ dia novo recomeca a escada: 03:30 e 03:31 (' + horas.join(' ') + '), e agora espera 5 min');
+      // disparo manual no meio da espera: roda na hora; falhando, nao mexe na escada do relogio
+      const antes = rot10.diagnostico().proxima_tentativa;
+      const man1 = await rot10.executar({ motivo: 'manual' });
+      ok(man1.ok === false && horas.length === 3 && rot10.diagnostico().proxima_tentativa === antes && rot10.diagnostico().falhas_seguidas === 2, '⚠️ o disparo manual NAO espera (rodou as ' + horas[2] + ') e, falhando, nao muda a espera do diario');
+      // consertado: o diario so volta na hora marcada (03:36), da certo, marca o dia e zera
+      quebrado = false; horas.length = 0;
+      await andar(relogio.toISOString(), 2);   // 03:34 e 03:35: ainda esperando
+      ok(horas.length === 0, '  03:34 e 03:35 — ainda esperando, nao roda');
+      await andar(relogio.toISOString(), 3);   // 03:36 em diante
+      d = rot10.diagnostico();
+      ok(horas.join(' ') === '03:36' && d.ultimo.ok === true && d.ultimo_dia === '2026-12-02' && d.falhas_seguidas === 0 && d.proxima_tentativa === null && st10.chamadas.upload > 0,
+        '⚠️ 03:36 — roda, da certo, marca o dia e ZERA a escada (' + JSON.stringify({ rodou: horas, falhas_seguidas: d.falhas_seguidas, proxima_tentativa: d.proxima_tentativa }) + ')');
+      // dia 3: falha duas vezes e ai o dono dispara na mao com tudo consertado → o manual que da certo zera e marca o dia
+      quebrado = true; horas.length = 0;
+      await andar('2026-12-03T06:29:00Z', 3);   // 03:29, 03:30, 03:31
+      ok(horas.join(' ') === '03:30 03:31' && rot10.diagnostico().proxima_tentativa === '2026-12-03T06:36:00.000Z', '  dia 3: falhou as 03:30 e as 03:31, espera ate 03:36');
+      quebrado = false;
+      const man2 = await rot10.executar({ motivo: 'manual' });
+      d = rot10.diagnostico();
+      ok(man2.ok === true && d.falhas_seguidas === 0 && d.proxima_tentativa === null && d.ultimo_dia === '2026-12-03', '⚠️ o manual que da certo zera a escada e marca o dia');
+      horas.length = 0;
+      await andar(relogio.toISOString(), 30);
+      ok(horas.length === 0, '  e o relogio nao roda de novo naquele dia');
+      // Codex #648: BACKUP_HORA=00:00 e falha de ontem esperando ate depois da meia-noite NAO adia o backup de hoje
+      quebrado = true; horas.length = 0;
+      const rot11 = criarRotina({
+        rodarBackup: async (o) => { horas.push(brasilia()); const raiz = path.join(o.saida, '2026-12-05T03-00-00'); fs.mkdirSync(raiz, { recursive: true });
+          return { raiz, manifesto: { empresas: {}, erros: [{ empresa: 'girassol', tabela: 'devolucoes_girassol', erro: 'simulado' }] } }; },
+        obterSupabase: () => st10.api, bucket: 'bk10', hora: '00:00', agora: () => relogio, log: () => {},
+      });
+      const andar11 = async (de, minutos) => { relogio = new Date(de); for (let m = 0; m < minutos; m++) { if (rot11.tick()) { for (let i = 0; i < 2000 && rot11.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5)); } relogio = new Date(relogio.getTime() + 60000); } };
+      await andar11('2026-12-05T03:00:00Z', 24 * 60);   // 00:00 → 23:59 de Brasilia, falhando o dia todo
+      const d11 = rot11.diagnostico();
+      ok(d11.falhas_seguidas >= 4 && new Date(d11.proxima_tentativa).getTime() > relogio.getTime(), '  dia 5 acabou com a espera passando da meia-noite (' + d11.proxima_tentativa + ')');
+      horas.length = 0;
+      ok(rot11.tick() === true, '⚠️ 00:00 do dia 6: a espera de ontem nao vale — o diario dispara');
+      for (let i = 0; i < 2000 && rot11.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5));
+      ok(horas.join(' ') === '00:00' && rot11.diagnostico().falhas_seguidas === 1, '  e a escada recomecou do zero (' + horas.join(' ') + ', ' + rot11.diagnostico().falhas_seguidas + ')');
+    }
   } catch (err) {
     falhas++; console.log('FALHA ' + (err && err.stack || err));
   } finally {
