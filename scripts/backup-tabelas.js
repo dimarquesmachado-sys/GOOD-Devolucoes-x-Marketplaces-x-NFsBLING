@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { obterEmpresa, listarEmpresas, envDaEmpresa } = require('../lib/empresas');
+const { obterEmpresa, listarEmpresas, envDaEmpresa, desligadaNoContrato } = require('../lib/empresas');
 const { lerTudo } = require('../lib/ler-tudo');
 
 // As tabelas de uma empresa: as da ficha + as do ciclo de defeitos (mesmo sufixo da `devolucoes`).
@@ -57,19 +57,34 @@ function chaveDaTabela(tabela) {
   return base ? CHAVES[base].slice() : ['id'];
 }
 
+// b801 (V-17, ensaio de CNPJ novo, 22/11) — EMPRESA NOVA ANTES DO PROVISIONAMENTO NAO DERRUBA O BACKUP DAS OUTRAS.
+// O embarque poe a ficha no registro PRIMEIRO, desligada (`ativa_em.devolucoes: false`); as tabelas vem depois (DDL, so
+// com o OK do dono). Nesse intervalo o backup sem `--empresas` — o DIARIO — lia tambem a empresa nova, as 9 tabelas dela
+// davam "tabela nao existe" e a rodada INTEIRA virava falha: medido com o PostgREST 14.5 (o de producao), 9 erros e
+// ZERO arquivo enviado da GOOD, da AMB e da Girassol.
+// Agora essa empresa e PULADA (fica em `manifesto.puladas`, com o motivo) — e so nesse caso exato:
+//   · foi o registro que a trouxe (quem pede `--empresas=<ela>` quer a resposta de verdade);
+//   · o contrato diz `devolucoes: false` (empresa LIGADA sem tabela e desastre, nao "nova");
+//   · NENHUMA tabela dela existe (faltar so uma parte e provisionamento pela metade: erro).
+const TABELA_NAO_EXISTE = 'PGRST205';   // "Could not find the table 'public.x' in the schema cache" (HTTP 404)
+const MOTIVO_NOVA = 'desligada no contrato e sem nenhuma tabela no banco (empresa nova, ainda nao provisionada)';
+
 async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = createClient, agora = () => new Date(), log = console.log } = {}) {
-  const fichas = (empresas && empresas.length ? empresas.map(obterEmpresa) : listarEmpresas());
+  const pedidas = !!(empresas && empresas.length);
+  const fichas = (pedidas ? empresas.map(obterEmpresa) : listarEmpresas());
   if (!(pagina >= 1 && pagina <= PAGINA_MAX)) throw new Error('pagina tem que estar entre 1 e ' + PAGINA_MAX + ' (teto do PostgREST): ' + pagina);
   const carimbo = agora().toISOString().slice(0, 19).replace(/:/g, '-');
   const raiz = pastaUnica(saida, carimbo);
-  const manifesto = { carimbo, pasta: raiz, inicio: agora().toISOString(), pagina, empresas: {}, erros: [] };
+  const manifesto = { carimbo, pasta: raiz, inicio: agora().toISOString(), pagina, empresas: {}, erros: [], puladas: [] };
   for (const ficha of fichas) {
     const sb = clienteDaEmpresa(ficha, criar);
     if (!sb) { manifesto.erros.push({ empresa: ficha.chave, erro: 'sem SUPABASE_URL/KEY no env' }); log(`[backup] ${ficha.chave}: sem credenciais, pulada`); continue; }
     const pasta = path.join(raiz, ficha.chave);
     fs.mkdirSync(pasta, { recursive: true });
     manifesto.empresas[ficha.chave] = {};
-    for (const tabela of tabelasDaEmpresa(ficha)) {
+    const tabelas = tabelasDaEmpresa(ficha);
+    const errosDaEmpresa = [];
+    for (const tabela of tabelas) {
       const t0 = Date.now();
       try {
         const linhas = await lerTudo(() => chaveDaTabela(tabela).reduce((q, c) => q.order(c, { ascending: true }), sb.from(tabela).select('*')), { tamanho: pagina, maximo: 2000000 });
@@ -79,9 +94,17 @@ async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = creat
         log(`[backup] ${ficha.chave}/${tabela}: ${linhas.length} linha(s) em ${Date.now() - t0}ms`);
       } catch (e) {
         // ⚠️ erro NAO vira arquivo vazio: fica no manifesto e o processo termina != 0
-        manifesto.erros.push({ empresa: ficha.chave, tabela, erro: String(e && e.message || e) });
+        errosDaEmpresa.push({ empresa: ficha.chave, tabela, erro: String(e && e.message || e), naoExiste: !!(e && e.causa && e.causa.code === TABELA_NAO_EXISTE) });
         log(`[backup] ${ficha.chave}/${tabela}: FALHOU — ${String(e && e.message || e)}`);
       }
+    }
+    if (!pedidas && desligadaNoContrato(ficha.chave) && errosDaEmpresa.length === tabelas.length && errosDaEmpresa.every((x) => x.naoExiste)) {
+      manifesto.puladas.push({ empresa: ficha.chave, motivo: MOTIVO_NOVA });
+      delete manifesto.empresas[ficha.chave];
+      fs.rmSync(pasta, { recursive: true, force: true });
+      log(`[backup] ${ficha.chave}: PULADA — ${MOTIVO_NOVA}`);
+    } else {
+      for (const x of errosDaEmpresa) manifesto.erros.push({ empresa: x.empresa, tabela: x.tabela, erro: x.erro });
     }
   }
   manifesto.fim = agora().toISOString();
@@ -94,6 +117,6 @@ module.exports = { rodar, tabelasDaEmpresa, clienteDaEmpresa, credenciaisDaEmpre
 if (require.main === module) {
   const arg = (n, p) => { const a = process.argv.find((x) => x.startsWith('--' + n + '=')); return a ? a.split('=')[1] : p; };
   rodar({ empresas: arg('empresas', '').split(',').filter(Boolean), saida: arg('saida', 'backups'), pagina: Number(arg('pagina', 1000)) })
-    .then(({ raiz, manifesto }) => { console.log(`[backup] pronto em ${raiz} — ${manifesto.erros.length} erro(s)`); process.exit(manifesto.erros.length ? 1 : 0); })
+    .then(({ raiz, manifesto }) => { console.log(`[backup] pronto em ${raiz} — ${manifesto.erros.length} erro(s)` + (manifesto.puladas.length ? `, ${manifesto.puladas.length} empresa(s) pulada(s): ${manifesto.puladas.map((p) => p.empresa).join(', ')}` : '')); process.exit(manifesto.erros.length ? 1 : 0); })
     .catch((e) => { console.error('[backup] estourou:', e); process.exit(1); });
 }

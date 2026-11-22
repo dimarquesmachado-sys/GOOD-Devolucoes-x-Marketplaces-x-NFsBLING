@@ -57,13 +57,17 @@ for (const e of ENVS) delete process.env[e];
 {
   const d = carregar().diagnostico();
   const eixos = Object.keys(d.eixos).sort().join(',');
-  ok(eixos === 'ambtotal/bling,ambtotal/ml,girassol/bling,girassol/ml,good/bling,good/ml', '⚠️ fora do servidor: os 6 eixos do REGISTRO (' + eixos + ')');
+  // b801 (V-17, ensaio de CNPJ novo): bling e ml de CADA empresa do registro. Era a lista das 3 de hoje cravada — o PR
+  // que colasse a ficha de uma empresa nova nascia com este teste vermelho (8 eixos, nao 6).
+  const doRegistro = require('../lib/empresas').listarEmpresas().flatMap((e) => [e.chave + '/bling', e.chave + '/ml']).sort();
+  ok(eixos === doRegistro.join(',') && ['ambtotal/bling', 'ambtotal/ml', 'girassol/bling', 'girassol/ml', 'good/bling', 'good/ml'].every((x) => doRegistro.includes(x)),
+    '⚠️ fora do servidor: os ' + doRegistro.length + ' eixos do REGISTRO — bling e ml de cada empresa (' + eixos + ')');
   ok(Object.values(d.eixos).every((t) => /^le do dono; se o dono falhar, usa a rede local \(sombra\)$/.test(t)), '  padrao `sombra`: "le do dono; se o dono falhar, usa a rede local" — o que resolverToken faz');
   ok(d.politica['girassol/ml'] === 'sombra' && d.politica['ambtotal/bling'] === 'sombra' && d.politica['good/ml'] === 'sombra', '  `politica` lista os eixos das TRES empresas');
   ok(/fabrica/.test(d.politica._quem_honra || '') && d.politica._ambtotal === undefined, '  e diz quem honra — a nota "_ambtotal: NAO honra" saiu');
   // b690: o veredito de corte cobre TODO eixo (era so `good/*`)
   ok(Object.keys(d.pode_cortar).sort().join(',') === eixos && d.pode_cortar['girassol/ml'].pronto === false && /sem trafego medido/.test(d.pode_cortar['girassol/ml'].por_que),
-     '⚠️ `pode_cortar` da veredito pros 6 eixos — sem trafego, diz "sem trafego medido ainda" (nunca "pronto" no escuro)');
+     '⚠️ `pode_cortar` da veredito pra TODOS os eixos — sem trafego, diz "sem trafego medido ainda" (nunca "pronto" no escuro)');
 
   process.env.TOKEN_POLITICA_AMBTOTAL_ML = 'local';
   process.env.TOKEN_POLITICA_GIRASSOL_BLING = 'remoto';
@@ -128,7 +132,8 @@ function pegar(porta, caminho) {
     ok(estados.ambtotal === 'desativada_por_env' && estados.girassol === 'montada' && estados.good === 'montada', '  montagem: ' + JSON.stringify(estados));
     ok(/desativada_por_env/.test(lt.eixos['ambtotal/ml']) && /desativada_por_env/.test(lt.eixos['ambtotal/bling']), '⚠️ /health: os eixos da AMB desativada dizem que ela esta desativada');
     ok(/^le do dono/.test(lt.eixos['girassol/ml']) && /^le do dono/.test(lt.eixos['girassol/bling']), '⚠️ /health: a Girassol MONTADA aparece lendo do dono (era "empresa nao ativa neste servico")');
-    ok(/^le do dono/.test(lt.eixos['good/ml']) && Object.keys(lt.eixos).length === 6 && !('girassol/*' in lt.eixos), '  6 eixos, nenhum curinga');
+    const noServidor = 2 * h.coordenacao.montagem_empresas.length;   // b801: dois por empresa que o servidor conhece (eram "6" cravados)
+    ok(/^le do dono/.test(lt.eixos['good/ml']) && noServidor >= 6 && Object.keys(lt.eixos).length === noServidor && !('girassol/*' in lt.eixos), '  ' + noServidor + ' eixos (2 por empresa do servidor), nenhum curinga');
     ok(lt.politica['girassol/ml'] === 'sombra' && lt.politica._ambtotal === undefined, '  `politica` traz os eixos da fabrica');
   }
   console.log('');

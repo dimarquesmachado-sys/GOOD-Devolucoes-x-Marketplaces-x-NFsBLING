@@ -35,7 +35,8 @@ function colarContrato(arquivo, contratoJson, chave, ativa) {
   fs.writeFileSync(arquivo, JSON.stringify(contrato, null, 2) + '\n');
 }
 
-/* Devolve { dir, chave, nome, rota, prefixo, sufixo, envs, apagar }. `envs` e a lista que o gerador manda criar. */
+/* Devolve { dir, chave, nome, rota, prefixo, sufixo, envs, canais, apagar }. `envs` e a lista que o gerador manda criar;
+   `canais` (b801), as de cada canal opcional: [{ nome, envs, nota }]. */
 function copiaComEmpresaNova({ chave, nome, ativa = true }) {
   const { gerar } = require('../scripts/nova-empresa');
   const g = gerar(chave, nome);
@@ -51,7 +52,7 @@ function copiaComEmpresaNova({ chave, nome, ativa = true }) {
     colarFicha(path.join(dir, 'lib', 'empresas.js'), g.ficha, chave);
     colarContrato(path.join(dir, 'contrato-empresas.json'), g.contrato, chave, ativa);
   } catch (e) { apagar(); throw e; }
-  return { dir, chave, nome, rota: '/' + chave, prefixo: g.PREF, sufixo: '_' + g.suf, envs: g.envs.slice(), apagar };
+  return { dir, chave, nome, rota: '/' + chave, prefixo: g.PREF, sufixo: '_' + g.suf, envs: g.envs.slice(), canais: (g.canais || []).map((c) => Object.assign({}, c, { envs: c.envs.slice() })), apagar };
 }
 
 module.exports = { copiaComEmpresaNova };

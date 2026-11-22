@@ -77,9 +77,12 @@ const semOutraEmpresa = (texto, onde) => { const a = achados(texto); return ok(a
       USERS: 'esto:s1,dono:s2', ADMIN_USER: 'dono', SESSION_SECRET: 'segredo-da-serrana-so-pra-teste-0123456789',
       BLING_CLIENT_ID: 'bling-id-de-teste', BLING_CLIENT_SECRET: 'bling-segredo-de-teste', ML_CLIENT_ID: '1234567890', ML_CLIENT_SECRET: 'ml-segredo-de-teste',
       ID_EMPRESA_CONTROL: '900000001', DEPOSITO_GERAL: '900000002', NATUREZAS_DEVOLUCAO_IDS: '900000003',
+      // b801: os canais, com os nomes que o gerador lista (sem token: nenhum deles liga pra fora)
+      MAGALU_CLIENT_ID: 'magalu-id-de-teste', MAGALU_CLIENT_SECRET: 'magalu-segredo-de-teste', MAGALU_TENANT_ID: 'tenant-de-teste', SHOPEE_LOJA_KEY: 'loja-da-serrana',
     };
     for (const [k, v] of Object.entries(daNova)) env[copia.prefixo + k] = v;
-    const foraDaLista = Object.keys(daNova).filter((k) => !copia.envs.includes(copia.prefixo + k) && !/^(ID_EMPRESA_CONTROL|DEPOSITO_GERAL|NATUREZAS_DEVOLUCAO_IDS)$/.test(k));
+    const dosCanais = copia.canais.flatMap((c) => c.envs);
+    const foraDaLista = Object.keys(daNova).filter((k) => !copia.envs.includes(copia.prefixo + k) && !dosCanais.includes(copia.prefixo + k) && !/^(ID_EMPRESA_CONTROL|DEPOSITO_GERAL|NATUREZAS_DEVOLUCAO_IDS)$/.test(k));
     ok(foraDaLista.length === 0, '  o ensaio so usa env que o gerador manda criar (fora da lista: ' + (foraDaLista.join(', ') || 'nenhuma') + ')');
 
     // ── o server.js DA COPIA
@@ -111,6 +114,11 @@ const semOutraEmpresa = (texto, onde) => { const a = achados(texto); return ok(a
     for (const u of refs) { const r = await s.pedir(u.startsWith('/') ? u : copia.rota + '/' + u); if (r.status !== 200) quebradas.push(u + ' → ' + r.status); }
     ok(refs.length >= 10 && quebradas.length === 0, '⚠️ os ' + refs.length + ' arquivos que a tela pede (scripts, estilos, logo, icones) respondem 200' + (quebradas.length ? ' — FALTAM: ' + quebradas.join(' | ') : ''));
     semOutraEmpresa(textoVisivel(entrada.corpo), 'tela de entrada');
+    // b801: o tema padrao do gerador (azul medio, texto branco) — o "+" do Lancar Defeito usa a cor do texto, nao o ambar
+    // (2,3:1 na ponta clara do cabecalho); a AMB continua no ambar
+    const destaque = (h) => ((String(h).match(/--destaque-sobre-marca:([^;]+);/) || [])[1] || '').trim();
+    const destaqueAmb = destaque((await s.pedir('/amb/')).corpo);
+    ok(destaque(entrada.corpo) === 'var(--sobre-marca)' && destaqueAmb === '#FFD54F', '⚠️ o destaque do cabecalho: a empresa nova (tema do gerador) usa a cor do texto; a AMB continua ambar ("' + destaque(entrada.corpo) + '" / "' + destaqueAmb + '")');
     const manifesto = json(await s.pedir(copia.rota + '/manifest-AMB.json')) || {};
     const icones = (manifesto.icons || []).map((i) => i.src);
     const iconesRuins = [];
@@ -145,6 +153,15 @@ const semOutraEmpresa = (texto, onde) => { const a = achados(texto); return ok(a
     ok(espreita.status === 200 && typeof faltaMagalu === 'string' && faltaMagalu.indexOf(NOVA.nome) >= 0, '⚠️ o aviso de "Magalu desligada" fala da conta DELA ("' + faltaMagalu + '")');
     semOutraEmpresa(semArquivos(espreita.corpo), 'resposta da espreita (o que o painel escreve)');
     semOutraEmpresa(semArquivos((await s.pedir(copia.rota + '/status')).corpo), 'status');
+
+    // ── b801: os canais que o gerador lista sao os que o servidor LE (o diagnostico da propria empresa responde)
+    const cfg = json(await pedirComChave(copia.rota + '/config')) || {};
+    const lido = (cfg.configurado || {});
+    ok(lido.magalu && lido.magalu.client_id === true && lido.magalu.tenant === 'tenant-de-teste' && lido.shopee && lido.shopee.loja === 'loja-da-serrana',
+      '⚠️ as envs de canal do gerador chegam no servidor: Magalu (client e tenant) e a loja da Shopee (' + JSON.stringify({ magalu: lido.magalu, shopee: lido.shopee }) + ')');
+    const doEmail = (copia.canais.find((c) => c.nome === 'E-mail') || { envs: [] }).envs;
+    const pedidasNoEmail = String((cfg.email || {}).falta || '').match(/SERRANA_EMAIL_[A-Z]+/g) || [];
+    ok(pedidasNoEmail.length >= 3 && pedidasNoEmail.every((e) => doEmail.includes(e)), '⚠️ e as do e-mail que o servidor diz que faltam estao TODAS na lista do gerador (' + pedidasNoEmail.join(', ') + ')');
 
     // ── a triagem grava nas tabelas DELA
     const T = 'devolucoes' + copia.sufixo;

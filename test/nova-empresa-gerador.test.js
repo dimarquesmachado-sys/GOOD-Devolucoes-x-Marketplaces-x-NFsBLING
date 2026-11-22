@@ -104,6 +104,12 @@ const { gerar } = require('../scripts/nova-empresa');
   const r = gerar('aurora', 'Aurora Comercio');
   ok(r.envs.includes('AURORA_ADMIN_USER'),
      '⚠️ a lista de envs do Render inclui ADMIN_USER (sem ele, ninguem faz acao de admin)');
+  // b801 (V-17): os canais vem junto, com o prefixo DESTA empresa (os nomes sao conferidos no servidor de verdade por
+  // test/empresa-nova-de-ponta-a-ponta: o /config da empresa nova tem que enxergar cada um)
+  const canais = r.canais || [];
+  ok(canais.map((c) => c.nome).join() === 'Magalu,Shopee,E-mail' && canais.every((c) => c.envs.length && c.nota && c.envs.every((e) => e.indexOf('AURORA_') === 0)),
+     '⚠️ o gerador lista tambem as envs de cada canal (Magalu, Shopee, e-mail), todas com o prefixo da empresa nova');
+  ok(!canais.some((c) => c.envs.some((e) => r.envs.includes(e))), '  sem repetir o que ja esta na lista obrigatoria');
 }
 
 // ── ⚠️ e a prova mais forte: o teste de contrato inteiro aceita a ficha ──
