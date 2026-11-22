@@ -22,6 +22,7 @@
 ```
 node verifica.js                                   # a bateria inteira (~250 testes) + boot real
 node test/duas-empresas-juntas.test.js             # o isolamento, e o que falta
+node test/empresa-nova-de-ponta-a-ponta.test.js    # um CNPJ novo, do gerador ate a triagem no banco (b800)
 node -e "console.log(require('./lib/empresas').conferirEmpresa('girassol'))"
 ```
 
@@ -52,7 +53,7 @@ lados ou não entra** — e um desses testes deve acusar o lado que faltou.
 
 ## O que está fechado no código
 
-As **seis formas de vazamento** que apareceram ao longo do trabalho, todas com
+As **sete formas de vazamento** que apareceram ao longo do trabalho, todas com
 varredura em zero e teste que acusa a volta:
 
 | forma | como se resolve hoje |
@@ -63,10 +64,13 @@ varredura em zero e teste que acusa a volta:
 | instância padrão (`require` sem `.criar()`) | só a fábrica; sem cliente, **derruba** |
 | rótulo de log `[AMB/...]` | `TAG_EMP`/`_TAG` da ficha |
 | link externo (`/amb-checkout-offline`, `/magalu/ir/amb`) | chave da ficha; no front, o link vem do backend |
+| **7ª (b800, 22/11): o NOME de outra empresa no texto da tela** ("falta a conta Magalu da AMB", "saia da conta da GOOD", título "AMBTotal" na página de defeitos) e o logo que ainda não foi subido | nome da ficha (`NOME_EMPRESA`), ou "desta empresa"; arquivo da marca que não existe cai no padrão (`lib/marca-empresa.js`). Varredura: `test/fabrica-texto-sem-outra-empresa` |
 
 ⚠️ **Cada uma delas foi descoberta depois de alguém declarar "está limpo".**
-A quinta e a sexta não apareciam em busca pelas quatro primeiras. Se for
-declarar pronto de novo, varra as seis — e procure uma sétima.
+A quinta e a sexta não apareciam em busca pelas quatro primeiras. A sétima só
+apareceu **ensaiando uma empresa nova de ponta a ponta** (22/11) — nenhuma busca
+por `AMB_`, `_amb` ou `/amb` acha uma frase. Se for declarar pronto de novo,
+varra as sete — e procure uma oitava.
 
 Além disso:
 
@@ -111,7 +115,11 @@ A pergunta "amanhã eu ligo outra empresa?" tem duas respostas diferentes.
 abaixo é o **histórico** desse embarque, não pendência. Use-a como roteiro
 para a próxima empresa, com as correções de `docs/EMBARCAR-GIRASSOL.md`.
 
-**Qualquer outro CNPJ, não** — mas há um gerador que faz a parte chata:
+**Qualquer outro CNPJ, não** — mas há um gerador que faz a parte chata, e desde
+o b800 um **ensaio** que percorre o caminho inteiro com uma empresa de mentira
+(`test/empresa-nova-de-ponta-a-ponta.test.js`: ficha gerada → tabelas num
+Postgres de verdade → `server.js` → tela, login, triagem). O que ele acha e o
+que ele não prova estão no roteiro, item V-17.
 
 ```
 node scripts/nova-empresa.js <chave> "<Nome da Empresa>"

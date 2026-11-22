@@ -71,7 +71,7 @@ router.get('/conectar', admin, (req, res) => {
       Clique, autorize na tela do marketplace e pronto — o resto acontece sozinho.
       Confira antes que o navegador esteja logado na conta da <b>${NOME_EMPRESA}</b>.<br>
       &#9888;&#65039; No <b>Magalu</b> vale dobrado: e a conta LOGADA na hora do consentimento
-      que fica autorizada — saia da conta da GOOD (ou use janela anonima) antes de clicar.<br><br>
+      que fica autorizada — saia da conta de outra empresa (ou use janela anonima) antes de clicar.<br><br>
       Endereco de retorno cadastrado nos apps:<br><code>${redirectOAuth()}</code>
     </div>`;
   res.set('Content-Type', 'text/html; charset=utf-8').send(pagina(`Conectar ${NOME_EMPRESA}`, corpo));

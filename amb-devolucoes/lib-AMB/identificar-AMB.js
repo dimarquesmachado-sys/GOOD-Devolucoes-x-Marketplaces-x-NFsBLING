@@ -1267,7 +1267,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           nomeCliente = (nf.contato && nf.contato.nome) ? nf.contato.nome : nomeCliente;
           resultado.avisos.push({
             tipo: 'nf_via_indice_amb',
-            mensagem: `NF ${nf.numero}${nf.serie ? ' serie ' + nf.serie : ''} achada pelo indice da AMB`,
+            mensagem: `NF ${nf.numero}${nf.serie ? ' serie ' + nf.serie : ''} achada pelo indice de notas`,
           });
           console.log(`[BUSCA][shopee] INDICE AMB: NF=${nf.numero} pedido=${devShopee.order_sn}`);
         }

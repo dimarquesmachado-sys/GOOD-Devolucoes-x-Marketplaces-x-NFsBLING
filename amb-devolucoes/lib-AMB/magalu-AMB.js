@@ -54,6 +54,10 @@ function criar(cfgEmpresa) {
 // b569 - prefixo VAZIO e valido (a GOOD usa MAGALU_* sem prefixo). Era `|| 'AMB_'`: com '' a GOOD leria e GRAVARIA
 // os tokens do Magalu da AMB. So a ausencia do campo cai no padrao historico.
 const _PREFIXO = (cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? String(cfgEmpresa.PREFIXO_ENV) : PREFIXO_SEM_EMPRESA;
+// b800 (V-17, ensaio de CNPJ novo): os avisos de "falta conectar" diziam "da AMB" pra TODA empresa — no painel da
+// Girassol e no de uma empresa nova o dono leria que e a conta da AMB que falta autorizar. O nome vem da config.
+const _NOME_EMPRESA = String((cfgEmpresa && cfgEmpresa.NOME_EMPRESA) || '').trim();
+const _DA_EMPRESA = _NOME_EMPRESA ? 'da ' + _NOME_EMPRESA : 'desta empresa';
 const _env = (nome) => process.env[_PREFIXO + 'MAGALU_' + nome] || '';
 'use strict';
 
@@ -240,7 +244,7 @@ async function renovar() {
 
 async function renovarInterno() {
 
-  if (!TOKENS.refresh) throw new Error('sem refresh token do Magalu da AMB - refaca o consentimento');
+  if (!TOKENS.refresh) throw new Error('sem refresh token do Magalu ' + _DA_EMPRESA + ' - refaca o consentimento');
   const corpo = new URLSearchParams({
     grant_type: 'refresh_token', refresh_token: TOKENS.refresh,
     client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
@@ -436,7 +440,7 @@ async function construirIndiceDevolucoes(opts = {}) {
   }
 }
 async function _construirIndiceDevolucoes(opts, fase1Pronta) {
-  if (!temToken()) { TIDX.erro = 'sem token Magalu da AMB'; return TIDX; }
+  if (!temToken()) { TIDX.erro = 'sem token Magalu ' + _DA_EMPRESA; return TIDX; }
   const t0 = Date.now();
   TIDX.tentativaEm = t0;   // b729: carimbo da tentativa (publicada ou nao) - acharDevolucao espaca as reconstrucoes
   const maxPaginas = opts.maxPaginas || 4;   // ate 400 tickets
@@ -656,7 +660,7 @@ async function construirIndice() {
 }
 
 function resumoEspreita() {
-  if (!temToken()) return { quente: false, desligada: true, falta: 'consentimento OAuth da conta Magalu da AMB', em_transito: [] };
+  if (!temToken()) return { quente: false, desligada: true, falta: 'consentimento OAuth da conta Magalu ' + _DA_EMPRESA, em_transito: [] };
   if (!temTenant()) return { quente: false, desligada: true, falta: _PREFIXO + 'MAGALU_TENANT_ID', em_transito: [] };
   if (!IDX.ts) return { quente: false, em_transito: [], erro: IDX.erro || null };   // b521: nunca montou — e se falhou, diz por que
 

@@ -471,7 +471,11 @@ function comTema(html) {
 
 // 14/10 - a MARCA (logo e icone) vem da ficha: sem isso a Girassol mostrava o logo e o icone da AMB na triagem e na aba
 // do navegador. Sem `marca` na ficha, fica o da AMB (os arquivos de sempre).
-const MARCA = require('../lib/marca-empresa').criarMarca(FICHA_AMB, { logo: 'logo-AMB.png', icone: 'icone-AMB.png' });   // peca multiloja em /lib
+// b800 (V-17, ensaio de CNPJ novo): arquivo da marca que ainda NAO foi subido cai no padrao (era imagem quebrada na
+// triagem e icone 404 no atalho) — e o boot avisa uma vez, com o caminho que falta.
+const MARCA = require('../lib/marca-empresa').criarMarca(FICHA_AMB, { logo: 'logo-AMB.png', icone: 'icone-AMB.png' },   // peca multiloja em /lib
+  { existe: (arquivo) => fs.existsSync(path.join(__dirname, 'public-AMB', String(arquivo))) });
+if (MARCA.faltando.length) console.warn(`[${TAG_APP}/MARCA] ⚠️ ${MARCA.faltando.length} arquivo(s) da marca nao existem em public-AMB (${MARCA.faltando.join(', ')}) — a tela sai com o logo/icone padrao ate subirem`);
 const ICONE_EMPRESA = MARCA.icone;
 const comMarca = MARCA.aplicar;
 const INDEX_AMB_HTML = comMarca(comTema(fs.readFileSync(
@@ -663,7 +667,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b799';
+const VERSAO = 'Devolucoes b800';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -974,8 +978,14 @@ router.get('/painel-AMB.html', (req, res) => {
 // express.static, cru — a Girassol abria essas duas roxas mesmo com o index
 // e o painel ja amarelos. Tela compartilhada tem que receber o tema em TODA
 // rota que a entrega, nao so nas que ja tinham substituicao.
+// b800 (V-17, ensaio de CNPJ novo): MESMO FURO do index e do painel, na 3a tela — o titulo da aba dizia "AMBTotal"
+// pra Girassol e pra qualquer empresa nova.
 const DEFEITOS_AMB_HTML = comTema(fs.readFileSync(
-  path.join(__dirname, 'public-AMB', 'defeitos-AMB.html'), 'utf8'));
+  path.join(__dirname, 'public-AMB', 'defeitos-AMB.html'), 'utf8'
+).replace(
+  '<title>AMBTotal - Estoque de defeitos</title>',
+  `<title>${NOME_EMPRESA} - Estoque de defeitos</title>`
+));
 // b532 - UNIFICACAO DO PAINEL, passo 1 (dono, 04/10: "so usa o triagem e o painel admin"): o painel2 era uma copia
 // mais antiga do painel-AMB (nenhuma funcao so dele, 19 a menos), que nenhuma tela linkava — cada ajuste de tela
 // era feito nele tambem a toa. Aposentado: quem tiver o endereco salvo cai no painel de verdade.
