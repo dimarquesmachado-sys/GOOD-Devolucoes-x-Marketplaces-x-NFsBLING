@@ -120,15 +120,16 @@ for (const rel of ['server.js', 'amb-devolucoes/app-AMB.js']) {
   const varrer = (dir, acc = []) => {
     for (const nome of fs2.readdirSync(dir)) {
       if (nome === 'node_modules' || nome === '.git' || nome === 'data') continue;
-      // ⚠️ b431 - `lib-AMB/` NA RAIZ É CÓPIA ÓRFÃ (achada por esta varredura,
-      // 24/09). Ninguém a carrega: o app usa `amb-devolucoes/lib-AMB/`. Ela
-      // entrou em 17/09, provavelmente por upload na pasta errada — o mesmo
-      // acidente que já derrubou o serviço inteiro em 23/07.
+      // ⚠️ b431 → b806 - HAVIA uma `lib-AMB/` ÓRFÃ NA RAIZ (achada por esta
+      // varredura, 24/09). Ninguém a carregava: o app usa
+      // `amb-devolucoes/lib-AMB/`. Entrou em 17/09, provavelmente por upload na
+      // pasta errada — o mesmo acidente que já derrubou o serviço inteiro em
+      // 23/07. Era PULADA aqui (os caminhos dela quebravam de verdade, e
+      // acusar esconderia um require quebrado REAL no meio do ruído).
       //
-      // 📌 Pulo em vez de acusar: os caminhos dela quebram de verdade, mas
-      // acusar aqui esconderia um require quebrado REAL no meio do ruído.
-      // Apagar é decisão do dono — está anotado pra ele decidir.
-      if (dir === RAIZ && nome === 'lib-AMB') continue;
+      // 📌 Saiu no b806 (V-21 — apagar era decisão do dono; o merge do PR foi
+      // a decisão). Sem pulo: se uma cópia voltar, é varrida como qualquer
+      // pasta, e `sem-copia-entre-empresas` acusa o lugar errado.
       const cheio = path2.join(dir, nome);
       const st = fs2.statSync(cheio);
       if (st.isDirectory()) varrer(cheio, acc);

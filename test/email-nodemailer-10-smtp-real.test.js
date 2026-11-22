@@ -46,7 +46,7 @@ function smtpFalso() {
   ok(/^10\./.test(versao), 'nodemailer instalado e o 10.x (' + versao + ')');
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   ok(/^\^10\./.test(pkg.dependencies.nodemailer), '  package.json pede ^10');
-  const fonte = ['server.js', 'amb-devolucoes/lib-AMB/email-AMB.js', 'lib-AMB/email-AMB.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+  const fonte = ['server.js', 'amb-devolucoes/lib-AMB/email-AMB.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
   ok(!/['"]NoAuth['"]/.test(fonte) && !/nodemailer\/lib\//.test(fonte), '  o repo nao depende do que mudou (codigo NoAuth→ENOAUTH, caminhos internos nodemailer/lib)');
 
   const { srv, porta, recebido } = await smtpFalso();
