@@ -17,6 +17,11 @@ function mlDeMentira(chamadas) {
     return { ok: true, status: 200, data: { data: [], results: [], paging: { total: 0, offset: 0, limit: 50 } } };
   };
 }
+// b805 (V-20): o vendedor de cada consulta e lido do PARAMETRO (players.user_id), nunca procurando o numero na URL
+// inteira. A URL tambem leva a hora de agora com milissegundo (range=date_created:after:...T08:30:47.111-00:00): quando o
+// milissegundo calhava de ser 111 (ou 101), o `!/111/` dava vermelho sem bug nenhum — 2 em cada 1.000 rodadas, e foi o
+// que derrubou o ai-safety do #649 (22/11). E o `/222/` sozinho dava verde falso na mesma proporcao.
+const vendedores = (ch) => [...new Set(ch.map((x) => (/[?&]players\.user_id=([^&]*)/.exec(x) || [])[1]).filter((v) => v !== undefined))].join(',');
 (async () => {
   // 1) cliente so com chamarML (o formato da GOOD antes do conserto)
   { const ch = []; const f = fabrica({ chamarML: mlDeMentira(ch) });
@@ -24,22 +29,22 @@ function mlDeMentira(chamadas) {
     const st = f.statusIndice ? f.statusIndice() : {};
     ok(!erro && !/is not a function/.test(JSON.stringify(st)), '⚠️ cliente SO com chamarML: o indice monta (antes: "ml.userId is not a function")' + (erro ? ' — ' + erro : ''));
     ok(ch.filter((x) => /\/users\/me/.test(x)).length === 1, '  sem userId no cliente, pergunta ao ML quem e o vendedor (/users/me) uma vez');
-    ok(ch.some((x) => /777001/.test(x)), '  e usa o vendedor respondido pelo ML nas consultas das devolucoes'); }
+    ok(vendedores(ch) === '777001', '  e usa o vendedor respondido pelo ML nas consultas das devolucoes (' + vendedores(ch) + ')'); }
   // 2) cliente com userId (a GOOD depois do conserto, com ML_USER_ID)
   { const ch = []; const f = fabrica({ chamarML: mlDeMentira(ch), userId: () => '555' });
     await f.construirIndice().catch(() => {});
-    ok(!ch.some((x) => /\/users\/me/.test(x)) && ch.some((x) => /555/.test(x)), '  cliente com userId: usa o dele e nao pergunta ao ML'); }
+    ok(!ch.some((x) => /\/users\/me/.test(x)) && vendedores(ch) === '555', '  cliente com userId: usa o dele e nao pergunta ao ML (' + vendedores(ch) + ')'); }
   // 2b) Codex #500 P1: religar o ML noutro vendedor sem reiniciar — o proximo indice usa o vendedor novo
   { const ch = []; let uid = '111'; const f = fabrica({ chamarML: mlDeMentira(ch), userId: () => uid });
     await f.construirIndice().catch(() => {});
     uid = '222'; ch.length = 0;
     await f.construirIndice().catch(() => {});
-    ok(ch.some((x) => /222/.test(x)) && !ch.some((x) => /111/.test(x)), '⚠️ religou o ML noutro vendedor: o indice seguinte usa o novo (sem cache de processo)'); }
+    ok(vendedores(ch) === '222', '⚠️ religou o ML noutro vendedor: o indice seguinte usa o novo (sem cache de processo) (' + vendedores(ch) + ')'); }
   { const ch = []; let n = 0; const f = fabrica({ chamarML: mlDeMentira(ch), quemSouEu: async () => ({ ok: true, user_id: 100 + (++n) }) });
     await f.construirIndice().catch(() => {});
     ch.length = 0;
     await f.construirIndice().catch(() => {});
-    ok(n === 2 && ch.some((x) => /102/.test(x)) && !ch.some((x) => /101/.test(x)), '  quemSouEu e perguntado de novo a cada montagem'); }
+    ok(n === 2 && vendedores(ch) === '102', '  quemSouEu e perguntado de novo a cada montagem (' + vendedores(ch) + ')'); }
   // 2c) Codex #500 P2: quemSouEu falhou (401/429) — nao repete /users/me cru
   { const ch = []; const f = fabrica({ chamarML: mlDeMentira(ch), quemSouEu: async () => ({ ok: false, status: 429 }) });
     await f.construirIndice().catch(() => {});
