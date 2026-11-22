@@ -38,6 +38,11 @@ Storage não responder nessa checagem, a rotina **não** roda às cegas: registr
 (é o último arquivo enviado); só as completas contam pros 14 dias — pasta de rodada que morreu no meio é apagada
 na rodada seguinte.
 
+**Quando a rodada diária falha (b802):** ela tenta de novo no minuto seguinte (falha passageira se resolve aí); se falhar
+de novo, espera **5 min**, depois **15 min**, e daí em diante **60 min** — no máximo 24 rodadas num dia inteiro de falha
+(eram 1.230, uma por minuto, cada uma lendo todas as tabelas). Deu certo, zera; no dia seguinte a escada recomeça. O
+`/api/admin/backup` (e o `/health`) mostra `falhas_seguidas` e `proxima_tentativa`. O disparo manual (`?rodar=1`) não espera.
+
 - **Ver o estado / último resultado** (logado como admin no navegador):
   https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/api/admin/backup
   (também aparece em `/health` → `coordenacao.backup`). `ultimo.ok:false` + `ultimo.erro` = a rodada falhou — uma
