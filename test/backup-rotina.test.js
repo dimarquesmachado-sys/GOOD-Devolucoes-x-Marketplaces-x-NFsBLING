@@ -228,6 +228,21 @@ function storageFalso({ falharUpload } = {}) {
       horas.length = 0;
       await andar(relogio.toISOString(), 30);
       ok(horas.length === 0, '  e o relogio nao roda de novo naquele dia');
+      // Codex #648: BACKUP_HORA=00:00 e falha de ontem esperando ate depois da meia-noite NAO adia o backup de hoje
+      quebrado = true; horas.length = 0;
+      const rot11 = criarRotina({
+        rodarBackup: async (o) => { horas.push(brasilia()); const raiz = path.join(o.saida, '2026-12-05T03-00-00'); fs.mkdirSync(raiz, { recursive: true });
+          return { raiz, manifesto: { empresas: {}, erros: [{ empresa: 'girassol', tabela: 'devolucoes_girassol', erro: 'simulado' }] } }; },
+        obterSupabase: () => st10.api, bucket: 'bk10', hora: '00:00', agora: () => relogio, log: () => {},
+      });
+      const andar11 = async (de, minutos) => { relogio = new Date(de); for (let m = 0; m < minutos; m++) { if (rot11.tick()) { for (let i = 0; i < 2000 && rot11.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5)); } relogio = new Date(relogio.getTime() + 60000); } };
+      await andar11('2026-12-05T03:00:00Z', 24 * 60);   // 00:00 → 23:59 de Brasilia, falhando o dia todo
+      const d11 = rot11.diagnostico();
+      ok(d11.falhas_seguidas >= 4 && new Date(d11.proxima_tentativa).getTime() > relogio.getTime(), '  dia 5 acabou com a espera passando da meia-noite (' + d11.proxima_tentativa + ')');
+      horas.length = 0;
+      ok(rot11.tick() === true, '⚠️ 00:00 do dia 6: a espera de ontem nao vale — o diario dispara');
+      for (let i = 0; i < 2000 && rot11.diagnostico().rodando; i++) await new Promise((r) => setTimeout(r, 5));
+      ok(horas.join(' ') === '00:00' && rot11.diagnostico().falhas_seguidas === 1, '  e a escada recomecou do zero (' + horas.join(' ') + ', ' + rot11.diagnostico().falhas_seguidas + ')');
     }
   } catch (err) {
     falhas++; console.log('FALHA ' + (err && err.stack || err));
