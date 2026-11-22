@@ -388,8 +388,10 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // que citam "AMBTotal" pra achar o texto ANTES de trocar — o valor
     // renderizado sai de NOME_EMPRESA, não deste literal; ver os testes de
     // corpo HTTP acima e a checagem do painel abaixo).
+    // b800 (V-17): + 1 marcador — o titulo da pagina de defeitos, que dizia "AMBTotal" pra toda empresa e passou a
+    // ser trocado como os outros (test/empresa-nova-de-ponta-a-ponta confere o titulo servido).
     const fixos = (semCom.match(/AMBTotal/g) || []).length;
-    ok(fixos <= 7,
+    ok(fixos <= 8,
        `  e quase nao sobrou "AMBTotal" cravado (${fixos}, so os fallbacks e os marcadores de replace())`);
 
     // ── ⚠️ e os links pro OUTRO serviço citam a empresa certa ─────────

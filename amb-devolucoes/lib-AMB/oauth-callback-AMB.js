@@ -107,7 +107,7 @@ router.get('/oauth/callback', async (req, res) => {
         </table></div>
         <div class="aviso">⚠️ Confira que o login foi feito na conta Magalu <b>da ${NOME_EMPRESA}</b> —
         e a conta logada que fica autorizada, nao o app.
-        ${magalu.temTenant() ? '' : `<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na AMB, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>${PREFIXO_ENV_EMPRESA}MAGALU_TENANT_ID</code> no Render.`}</div>`));
+        ${magalu.temTenant() ? '' : `<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na conta da ${NOME_EMPRESA}, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>${PREFIXO_ENV_EMPRESA}MAGALU_TENANT_ID</code> no Render.`}</div>`));
     }
 
     res.status(400).json({ ok: false, erro: 'servico desconhecido no state' });
