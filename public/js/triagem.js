@@ -194,6 +194,12 @@ async function confirmarAprovar() {
     toast('Erro de conexao', 'err');
     btn.disabled = false;
     btn.innerHTML = '✅ Confirmar';
+  } finally {
+    // b807 (V-22): "Salvando..." so enquanto o servidor nao respondeu. O texto so voltava no ERRO: quando dava certo
+    // (ou "ja foi triada") a janela fechava com o botao escrito "Salvando..." e a triagem SEGUINTE, sem recarregar a
+    // pagina, ja abria assim — nada sendo salvo, a tela esperando o clique e o estoquista esperando a tela.
+    // (Ligar/desligar este botao continua com a bipagem, a cada abertura da janela.)
+    btn.innerHTML = '✅ Confirmar';
   }
 }
 
@@ -795,6 +801,11 @@ async function encerrarDivergente() {
     toast('Erro de conexao', 'err');
     btn.disabled = false;
     btn.innerHTML = '✅ Sim, Registrar';
+  } finally {
+    // b807 (V-22): idem o incluir no estoque — e aqui ninguem religa o botao na abertura seguinte: depois de UM
+    // divergente registrado ele ficava "Salvando..." DESLIGADO, e o proximo so saia recarregando a pagina.
+    btn.disabled = false;
+    btn.innerHTML = '✅ Sim, Registrar';
   }
 }
 
@@ -944,6 +955,10 @@ async function encerrarParcial() {
     }
   } catch (err) {
     toast('Erro de conexao', 'err');
+    btn.disabled = false;
+    btn.innerHTML = '✅ Sim, Encerrar';
+  } finally {
+    // b807 (V-22): idem — depois de UMA parcial registrada o botao ficava "Enviando..." DESLIGADO ate recarregar.
     btn.disabled = false;
     btn.innerHTML = '✅ Sim, Encerrar';
   }
