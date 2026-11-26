@@ -9,6 +9,24 @@ function fecharModal(id) {
   document.getElementById(id).classList.remove('show');
 }
 
+// b808 (V-23): LIMPAR A TELA DEPOIS DE GRAVAR — so se ninguem seguiu adiante. Gravou, a tela mostra o sucesso e se
+// limpa sozinha `ms` depois (cartao some, campo esvazia, cursor volta pro leitor). So que essa limpeza rodava mesmo
+// quando o estoquista ja tinha bipado a PROXIMA devolucao: medido, busca 0,3 s e 1,5 s depois do sucesso -> o cartao
+// da venda NOVA sumia e ele tinha de bipar de novo. Agora ela so roda se a tela ainda e a da triagem gravada:
+// nenhuma busca nova (`_buscaSeq`, do busca.js — sobe a cada busca e quando o cartao do pacote MELI abre) e nenhum
+// codigo novo sendo digitado no campo.
+function limparTelaDepoisDeGravar(ms) {
+  const geracao = () => (typeof _buscaSeq === 'number' ? _buscaSeq : 0);
+  const tela = geracao();
+  const codigo = inputCodigo.value;
+  setTimeout(() => {
+    if (geracao() !== tela || inputCodigo.value !== codigo) return;   // ja seguiu adiante: esta tela nao e mais a minha
+    divResultado.classList.remove('show');
+    inputCodigo.value = '';
+    inputCodigo.focus();
+  }, ms);
+}
+
 // ================ TRIAGEM - APROVAR COM BIPAGEM ================
 function abrirModalAprovar() {
   if (!ultimaBusca) return;
@@ -165,11 +183,7 @@ async function confirmarAprovar() {
       mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado. Quando for emitir, basta clicar em "Abrir NF no Bling" no painel.');
       // b524 - AUDITORIA (Codex, b520): o sucesso trocava o aviso na hora; com pendencia, o aviso fica
       if (!d.aviso) toast('Aprovacao registrada!', 'ok');
-      setTimeout(() => {
-        divResultado.classList.remove('show');
-        inputCodigo.value = '';
-        inputCodigo.focus();
-      }, 2500);
+      limparTelaDepoisDeGravar(2500);
     } else if (r.status === 422 && d.sem_origem) {
       // b459 - sem pedido/rastreio/NF: o estoquista bipou o codigo de barras
       // do PRODUTO. Um toast some antes de ler; isto fica ate ele fechar.
@@ -486,11 +500,7 @@ async function enviarProblema() {
       toast('🔧 Consertado! Vai pro estoque.', 'ok');
       window.fotosUploadadas = [];
       mostrarSucesso('🔧 Produto consertado!', 'Foi pra fila de aprovadas — o Diego emite a NF e inclui no estoque.');
-      setTimeout(function () {
-        divResultado.classList.remove('show');
-        inputCodigo.value = '';
-        inputCodigo.focus();
-      }, 2600);
+      limparTelaDepoisDeGravar(2600);
       return;
     }
 
@@ -522,7 +532,7 @@ async function enviarProblema() {
         abrirPopupEtiquetaDefeito(etq, fecharELimpar);
       } else {
         mostrarSucesso('\u26a0\ufe0f Problema reportado!', 'Email enviado pra Diego. Aguarde retorno.');
-        setTimeout(fecharELimpar, 2500);
+        limparTelaDepoisDeGravar(2500);
       }
     } else if (r.status === 409 && d.erro === 'duplicata') {
       toast('Esta devolucao ja foi triada antes!', 'err');
@@ -783,11 +793,7 @@ async function encerrarDivergente() {
         `Esperado: ${divergenteEstado.produtoEsperado.sku} · Voltou: ${divergenteEstado.produtoCorreto.sku} (${divergenteEstado.qtd} un) + ${fotosOk.length} fotos. Diego vai analisar.`
       );
       toast('Divergente registrado!', 'ok');
-      setTimeout(() => {
-        divResultado.classList.remove('show');
-        inputCodigo.value = '';
-        inputCodigo.focus();
-      }, 2800);
+      limparTelaDepoisDeGravar(2800);
     } else if (r.status === 409 && d.erro === 'duplicata') {
       fecharModal('modalConfirmacaoDivergente');
       toast('Esta devolucao ja foi triada antes!', 'err');
@@ -930,11 +936,7 @@ async function encerrarParcial() {
         (d.aviso ? '⚠️ ' + d.aviso + ' — ' : '') + `Documentação: ${bipagemEstado.totalBipado} de ${bipagemEstado.totalEsperado} unidades + ${fotosOk.length} fotos${d.aviso ? ' (nem tudo gravou — veja o aviso)' : ' salvas'}. Diego pode contestar com o marketplace se necessário.`
       );
       toast('Devolucao parcial registrada!', 'ok');
-      setTimeout(() => {
-        divResultado.classList.remove('show');
-        inputCodigo.value = '';
-        inputCodigo.focus();
-      }, 2800);
+      limparTelaDepoisDeGravar(2800);
     } else if (r.status === 422 && d.sem_origem) {
       // b461 (Codex): a parcial posta no mesmo endpoint — mesmo tratamento.
       // b462 (Codex): fecha a confirmacao e tira o "Enviando..." — senao o

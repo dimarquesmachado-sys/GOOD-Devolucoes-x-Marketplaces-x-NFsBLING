@@ -17,6 +17,10 @@
 //   3. devolucao PARCIAL duas vezes seguidas: o "Sim, Encerrar" da 2a esta ligado e grava;
 //   4. produto DIVERGENTE duas vezes seguidas: o "Sim, Registrar" da 2a esta ligado e grava;
 //   5. enquanto o servidor ainda nao respondeu, o botao segue "Salvando..." e desligado (um clique = um registro).
+//   6. (b808, V-23) a tela se limpa sozinha 2,5 s depois de gravar (2,8 s na parcial e no divergente). Se a busca
+//      SEGUINTE chegasse antes disso, a limpeza da triagem anterior apagava o cartao da venda NOVA (medido: busca 0,3 s
+//      e 1,5 s depois do sucesso -> cartao sumia). Agora a limpeza so roda se ninguem seguiu adiante: nem outra busca,
+//      nem codigo novo sendo digitado. Quem nao seguiu continua com a tela limpa e o cursor no campo, como era.
 //
 // As rotas de busca e de gravacao sao simuladas no formato que o servidor manda. O passo das FOTOS (camera) fica de
 // fora: o teste entra onde a camera entrega (abrirConfirmacaoParcial / abrirConfirmacaoDivergente, chamadas pelo
@@ -42,6 +46,16 @@ const venda = (codigo) => ({
   nf: { numero: '9' + codigo.slice(-4), idBling: 123, itens: [{ titulo: 'Venda ' + codigo, sku: 'KC6', ean: EAN, quantidade: 2 }] },
   claim: null, avisos: [], tentativas: [],
 });
+
+// Os 5 pontos que limpam a tela por tempo usam a MESMA peca (limparTelaDepoisDeGravar). Tres sao exercitados abaixo; os
+// outros dois ("consertei" e problema sem a janela da etiqueta) passam pela camera e nao da pra bipar daqui — entao
+// confere-se que nao sobrou limpeza por tempo fora da peca.
+{
+  const FONTE = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'js', 'triagem.js'), 'utf8');
+  const chamadas = (FONTE.match(/^\s+limparTelaDepoisDeGravar\(\d+\);/gm) || []).length;
+  const escondem = (FONTE.match(/divResultado\.classList\.remove\('show'\)/g) || []).length;
+  ok(chamadas === 5 && escondem === 2, '  triagem.js: 5 limpezas por tempo, todas pela mesma peca (' + chamadas + ' chamadas; ' + escondem + ' lugares escondem o cartao: a peca e o fechar da etiqueta)');
+}
 
 (async () => {
   const env = {
@@ -197,6 +211,57 @@ const venda = (codigo) => ({
       await page.click('#btnEncerrarDivergente', { timeout: 3000 }).catch(() => {});
       await page.waitForFunction(() => !document.getElementById('modalConfirmacaoDivergente').classList.contains('show'), null, { timeout: 5000 }).catch(() => {});
       ok(grava.divergente.length === 2 && (grava.divergente[1] || {}).shipment_id === '48100000008', '⚠️ o 2o divergente GRAVOU (' + grava.divergente.length + ' de 2)');
+
+      // ── 6. b808 (V-23): a limpeza da tela depois de gravar nao apaga o cartao de quem ja seguiu adiante ──
+      await telaLimpa().catch(() => {});
+      const tela = (codigo) => page.evaluate((txt) => ({ visivel: document.getElementById('resultado').classList.contains('show'), temVenda: document.getElementById('resultado').innerText.includes(txt),
+        campo: document.getElementById('codigo').value, foco: (document.activeElement || {}).id || '' }), 'Venda ' + codigo);
+      const gravarAprovar = async (codigo) => {
+        await buscar(codigo); await abrirAprovar(); await biparProduto(2);
+        await page.click('#btnConfirmarAprovar');
+        await page.waitForFunction(() => !document.getElementById('modalAprovar').classList.contains('show'), null, { timeout: 8000 });
+      };
+      // (a) ninguem seguiu adiante: a tela se limpa e o cursor volta pro campo (como era)
+      await gravarAprovar('48100000011');
+      await page.waitForTimeout(3300);
+      let st = await tela('48100000011');
+      ok(!st.visivel && st.campo === '' && st.foco === 'codigo', '  gravou e ficou parado: 3,3 s depois a tela esta limpa, o campo vazio e o cursor nele (' + JSON.stringify(st) + ')');
+      // (b) a busca seguinte chega ANTES da limpeza da anterior: o cartao da venda nova fica
+      await gravarAprovar('48100000012');
+      await buscar('48100000013');
+      await page.waitForTimeout(3300);
+      st = await tela('48100000013');
+      await foto('busca-seguinte-rapida');
+      ok(st.visivel && st.temVenda && st.campo === '48100000013', '⚠️ bipou a PROXIMA logo depois de gravar: 3,3 s depois o cartao dela continua na tela (' + JSON.stringify(st) + ')');
+      // (c) ... e a triagem dela segue normal (a janela abre, bipa, grava)
+      const antes6 = grava.aprovar.length;
+      await abrirAprovar(); await biparProduto(2); await page.click('#btnConfirmarAprovar');
+      await page.waitForFunction(() => !document.getElementById('modalAprovar').classList.contains('show'), null, { timeout: 8000 });
+      ok(grava.aprovar.length === antes6 + 1 && grava.aprovar[antes6].shipment_id === '48100000013', '  e a triagem dela grava (' + (grava.aprovar[antes6] || {}).shipment_id + ')');
+      await telaLimpa();
+      // (d) comecou a DIGITAR o proximo codigo (sem Enter ainda): a limpeza nao apaga o que ele digitou
+      await gravarAprovar('48100000014');
+      await page.fill('#codigo', '4810');
+      await page.waitForTimeout(3300);
+      st = await tela('48100000014');
+      ok(st.campo === '4810', '⚠️ digitando o proximo codigo logo depois de gravar: 3,3 s depois o que digitou continua no campo (' + JSON.stringify(st) + ')');
+      // (e) bipou o MESMO pacote de novo (o codigo no campo nao muda — so a busca e nova): o cartao fica
+      await page.fill('#codigo', '');
+      await gravarAprovar('48100000019');
+      await buscar('48100000019'); await page.waitForTimeout(3300);
+      st = await tela('48100000019');
+      ok(st.visivel && st.temVenda && !/Incluido no estoque/.test(await sucesso()), '⚠️ bipou o MESMO codigo de novo logo depois de gravar: o cartao novo fica (' + JSON.stringify(st) + ')');
+      // (f) o mesmo vale pra parcial e pro divergente (2,8 s)
+      await parcial('48100000015'); await page.click('#btnEncerrarParcial');
+      await page.waitForFunction(() => !document.getElementById('modalConfirmacaoParcial').classList.contains('show'), null, { timeout: 8000 });
+      await buscar('48100000016'); await page.waitForTimeout(3600);
+      st = await tela('48100000016');
+      ok(st.visivel && st.temVenda, '⚠️ PARCIAL gravada e a proxima bipada em seguida: o cartao dela fica (' + JSON.stringify(st) + ')');
+      await divergente('48100000017'); await page.click('#btnEncerrarDivergente');
+      await page.waitForFunction(() => !document.getElementById('modalConfirmacaoDivergente').classList.contains('show'), null, { timeout: 8000 });
+      await buscar('48100000018'); await page.waitForTimeout(3600);
+      st = await tela('48100000018');
+      ok(st.visivel && st.temVenda, '⚠️ DIVERGENTE gravado e a proxima bipada em seguida: o cartao dela fica (' + JSON.stringify(st) + ')');
 
       ok(errosJs.length === 0, '  nenhum erro de JavaScript na pagina' + (errosJs.length ? ' — ' + errosJs.join(' | ') : ''));
       await ctx.close();
