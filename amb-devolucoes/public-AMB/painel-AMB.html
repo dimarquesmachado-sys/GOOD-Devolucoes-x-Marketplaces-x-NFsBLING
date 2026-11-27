@@ -1022,13 +1022,13 @@
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>${linkPedidoMkt(d)}`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
-              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${fullComNfDoMarketplace(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
+              ${fullComNfDoMarketplace(d) && !d.nf_devolucao_id_bling
                 ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml((d.dep_sugerido || d.status || d.tipo) || '')}', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, false) : ''}`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${fullComNfDoMarketplace(d) ? botaoFullEstoque(d, false) : ''}`
                   : ''
               }
               ${!d.nf_numero && !d.nf_id_bling && d.order_id
@@ -1075,13 +1075,13 @@
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
-              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${fullComNfDoMarketplace(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
+              ${fullComNfDoMarketplace(d) && !d.nf_devolucao_id_bling
                 ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'problema', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${fullComNfDoMarketplace(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -1160,12 +1160,12 @@
               }
               <!-- b490 - pedido do dono (02/10): divergente (envio errado) tambem gera a NF de devolucao;
                    o modal abre no DEFEITOS (o produto que voltou nao e o vendido — vai pra conferencia). -->
-              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+              ${fullComNfDoMarketplace(d) && !d.nf_devolucao_id_bling
                 ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${jsArg(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'divergente', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${fullComNfDoMarketplace(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -2385,11 +2385,30 @@
       var mkt = nomeMarketplaceFull(d);
       return 'Procura no Bling a NF de ENTRADA série ' + escapeHtml(serieFull(d)) + ' desta devolução (emissor: ' + (mkt === 'marketplace' ? 'o próprio marketplace' : mkt) + ') e vincula ao card';
     }
+    /* b810 (V-25) - QUEM EMITE a NF de devolucao do Full depende do canal.
+       Dono, 27/11 (AMB, venda do Full da SHOPEE, serie 5): "so sei que nao consegui gerar a NF. Ou achar a que ja foi
+       gerada." MEDIDO no servico da Shopee (sonda dos tipos do Full, ambtotal-shopee-nf-sync-x-bling): de 01/08 a
+       27/11 a Shopee nao tem NENHUMA nota de devolucao nem de entrada do Full da AMB — e o controle (venda do Full de
+       junho, antes de a AMB entrar no Full) responde do mesmo jeito. No Full da Shopee a devolucao que chega no galpao
+       nao tem nota do marketplace: quem gera e a empresa.
+       O "nao gere NF" nasceu no Full do ML (la o ML emite) e foi estendido a toda serie != 1. Num card da Shopee ele
+       mandava "importar o XML" de uma nota que nao existe e escondia o Gerar NF. Daqui pra frente o Full da Shopee
+       segue o fluxo NORMAL de gerar a NF (que ja da a entrada no estoque, no deposito escolhido).
+       Os outros canais NAO foram medidos e ficam como estavam: serie != 1 = a nota e do marketplace. */
+    function fullSemNfDoMarketplace(d) { return ehSerie2(d) && nomeMarketplaceFull(d) === 'Shopee'; }
+    function fullComNfDoMarketplace(d) { return ehSerie2(d) && !fullSemNfDoMarketplace(d); }
     function avisoFullHtml(d) {
       var mkt = nomeMarketplaceFull(d);
       var rotSerie = 'SÉRIE ' + escapeHtml(serieFull(d));
       var doMkt = mkt === 'marketplace' ? 'do próprio marketplace' : 'do ' + mkt.toUpperCase();
       var ok = !!d.nf_devolucao_id_bling;
+      if (fullSemNfDoMarketplace(d)) {   // b810 (V-25)
+        return '<div style="background:' + (ok ? '#e8f5e9;border:2px solid #43a047;color:#1b5e20' : '#e3f2fd;border:2px solid #1e88e5;color:#0d47a1') + ';border-radius:8px;padding:8px 11px;margin:8px 0;font-size:13px;line-height:1.45;">' +
+          (ok
+            ? '🏬 <b>FULL · ' + rotSerie + ' — NF de devolução' + (d.nf_devolucao_numero ? ' nº ' + escapeHtml(String(d.nf_devolucao_numero)) : '') + ' já ligada a este card.</b> No Full da ' + mkt + ' a nota é sua: a ' + mkt + ' não emite.'
+            : '🏬 <b>FULL · ' + rotSerie + ' — no Full da ' + mkt + ' a NF de devolução é SUA:</b> a ' + mkt + ' não emite. Gere pelo botão <b>🧾 Gerar NF</b> — o estoque entra pela própria nota, no depósito que você escolher.') +
+          '</div>';
+      }
       var dep = String(d.estoque_deposito || '');
       var lancando = /^LANCANDO/.test(dep);
       var lancado = !!d.estoque_lancado_em && !lancando;
