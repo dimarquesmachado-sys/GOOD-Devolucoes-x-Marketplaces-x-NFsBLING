@@ -19,7 +19,7 @@ function fonteDaFuncao(nome) {
 }
 const ctx = {};
 vm.createContext(ctx);
-for (const f of ['escapeHtml', 'nomeMarketplaceFull', 'serieFull', 'avisoFullHtml', 'botaoFullEstoque']) {
+for (const f of ['escapeHtml', 'nomeMarketplaceFull', 'serieFull', 'ehSerie2', 'fullSemNfDoMarketplace', 'fullComNfDoMarketplace', 'avisoFullHtml', 'botaoFullEstoque']) {   // b810: o aviso passou a perguntar quem emite
   const src = fonteDaFuncao(f);
   ok(!!src, '  funcao ' + f + ' existe no painel');
   if (src) vm.runInContext(src, ctx);
@@ -29,8 +29,22 @@ const a1 = ctx.avisoFullHtml(Object.assign({}, base, { nf_devolucao_id_bling: '9
 ok(/NF DE DEVOLUÇÃO JÁ EMITIDA PELO MERCADO LIVRE/.test(a1) && /52011/.test(a1) && /Não gere NF/.test(a1) && /lançar no estoque/.test(a1), '⚠️ Full com a NF do ML vinculada: "SÉRIE 2 — NF DE DEVOLUÇÃO JÁ EMITIDA PELO ML (nº) · não gere NF · só lançar no estoque"');
 const a2 = ctx.avisoFullHtml(Object.assign({}, base));
 ok(/ainda não está no Bling/.test(a2) && /não gere NF/.test(a2) && /Toolbox importa sozinha/.test(a2), '⚠️ Full sem a NF do ML no Bling: diz que e do ML, que ainda nao chegou e que a Toolbox traz sozinha');
-const as = ctx.avisoFullHtml(Object.assign({}, base, { marketplace: 'shopee', nf_devolucao_id_bling: '9' }));
-ok(/EMITIDA PELO SHOPEE/.test(as) && !/MERCADO LIVRE/.test(as), '⚠️ Codex #404: Full da Shopee diz SHOPEE (o emissor sai do card, nunca "Mercado Livre" fixo)');
+// b810 (V-25): a Shopee deixou de servir de exemplo aqui — medido em 27/11, ela NAO emite a devolucao do Full
+// (casos logo abaixo). O que o Codex #404 pediu continua valendo e continua testado, com um canal que emite.
+const as = ctx.avisoFullHtml(Object.assign({}, base, { marketplace: 'amazon', nf_devolucao_id_bling: '9' }));
+ok(/EMITIDA PELO AMAZON/.test(as) && !/MERCADO LIVRE/.test(as), '⚠️ Codex #404: Full de outro canal diz o canal DELE (o emissor sai do card, nunca "Mercado Livre" fixo)');
+// b810 (V-25): no Full da SHOPEE a nota de devolucao e da empresa — o aviso nao manda "nao gerar" nem diz que a Shopee emitiu
+const sh = Object.assign({}, base, { nf_serie: '5', marketplace: 'shopee', nf_devolucao_numero: null });
+const sh1 = ctx.avisoFullHtml(sh);
+ok(/FULL · SÉRIE 5/.test(sh1) && /a Shopee não emite/.test(sh1) && /Gerar NF/.test(sh1) && !/não gere NF|importe o XML|EMITIDA PELO|MERCADO LIVRE/i.test(sh1), '⚠️ V-25: Full da Shopee SEM a NF — "a NF de devolucao e SUA: a Shopee nao emite. Gere..." (dizia "nao gere NF ... importe o XML")');
+const sh2 = ctx.avisoFullHtml(Object.assign({}, sh, { nf_devolucao_id_bling: '9', nf_devolucao_numero: '888' }));
+ok(/nº 888 já ligada/.test(sh2) && /a Shopee não emite/.test(sh2) && !/EMITIDA PELO SHOPEE|Não gere NF|lançar no estoque/i.test(sh2), '⚠️ V-25: Full da Shopee COM a NF — diz a nota e nao pede "lancar no estoque" (o estoque entrou pela nota)');
+ok(ctx.fullSemNfDoMarketplace(sh) === true && ctx.fullComNfDoMarketplace(sh) === false, '⚠️ V-25: Full da Shopee = a nota e da empresa');
+ok(ctx.fullSemNfDoMarketplace(Object.assign({}, sh, { nf_serie: '1' })) === false && ctx.fullComNfDoMarketplace(Object.assign({}, sh, { nf_serie: '1' })) === false, '  V-25: Shopee serie 1 (matriz) nao e Full de jeito nenhum');
+for (const [canal, extra] of [['ml', {}], ['magalu', {}], ['amazon', {}], ['', {}], ['', { order_id: '2000012345678901' }]]) {
+  const c = Object.assign({}, base, { nf_serie: '3', marketplace: canal }, extra);
+  ok(ctx.fullComNfDoMarketplace(c) === true && ctx.fullSemNfDoMarketplace(c) === false, '  V-25: canal "' + (canal || (extra.order_id ? 'ML pelo numero do pedido' : 'desconhecido')) + '" segue como estava — a nota e do marketplace');
+}
 const ax = ctx.avisoFullHtml(Object.assign({}, base, { marketplace: '' }));
 ok(/do próprio marketplace/.test(ax) && !/Mercado Livre/i.test(ax), '  marketplace desconhecido: "do proprio marketplace" (sem afirmar emissor)');
 const as3 = ctx.avisoFullHtml(Object.assign({}, base, { nf_serie: '3', marketplace: 'magalu', nf_devolucao_id_bling: '9' }));
