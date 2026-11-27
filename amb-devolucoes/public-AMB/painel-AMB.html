@@ -1575,7 +1575,7 @@
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
             <option value="">📦 carregando depósitos...</option>
           </select>
-          <span style="font-size:12px; color:#5e35b1;">padrão: DEFEITOS — troque se o produto estiver bom</span>
+          <span id="depModalDica" style="font-size:12px; color:#5e35b1;"></span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
@@ -1627,6 +1627,13 @@
           sel.innerHTML = deps.map(function (d) {
             return '<option value="' + escapeHtml(d.id) + '"' + (d.id === alvo ? ' selected' : '') + '>📦 ' + escapeHtml(d.descricao) + '</option>';
           }).join('') || '<option value="">(sem depósitos)</option>';
+          // b811 (V-26, dono 27/11) - a frase ao lado dizia "padrão: DEFEITOS" cravado, em toda fila: sobrou da b260,
+          // quando o modal abria sempre no DEFEITOS. Desde a b287 Aprovadas abre no GERAL e a frase desmentia a
+          // caixinha. Agora ela sai do deposito que a lista MARCOU — nunca de um nome escrito aqui. A frase e a
+          // vizinha DESTA caixinha (nao a do documento): se este modal ja fechou e outro abriu, nao escreve no novo.
+          var marcado = deps.find(function (d) { return d.id === alvo; });
+          var dica = sel.parentNode ? sel.parentNode.querySelector('#depModalDica') : null;
+          if (dica && marcado) dica.textContent = 'padrão: ' + String(marcado.descricao || '') + (alvo === idDefeitos ? ' — troque se o produto estiver bom' : ' — troque se o produto estiver com problema');
           if (alvo) liberarBotoesGerar();
         } catch (e) {
           sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>';
