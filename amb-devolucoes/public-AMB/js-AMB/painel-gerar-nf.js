@@ -132,14 +132,14 @@
       const puladosParcial = marcados.filter(c => c.dataset.full !== '1' && temNF(c) && c.dataset.sorascunho !== '1'
         && faltasDoCard(c.dataset.id).length > 0).length;
       const pulados = puladosSemNF + puladosRascunho + puladosParcial;
-      const linhaFull = puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio ML).\n` : '';
+      const linhaFull = puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio marketplace).\n` : '';
       const linhasPulados =
         (puladosSemNF > 0 ? `⚠️ ${puladosSemNF} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
         (puladosRascunho > 0 ? `📝 ${puladosRascunho} card(s) "só rascunho" (estornadas sem retorno) serão pulados — gere a NF pelo botão do card.\n` : '') +
         (puladosParcial > 0 ? `🧩 ${puladosParcial} card(s) com devolução PARCIAL (o que voltou não bate com a NF) serão pulados — gere em rascunho pelo botão do card.\n` : '');
       if (fila.length === 0) {
         toast(puladosFull > 0 && pulados === 0
-          ? 'Só tem card FULL selecionado — a NF de devolução deles é emitida pelo próprio ML (selo 🏬).'
+          ? 'Só tem card FULL selecionado — a NF de devolução deles é emitida pelo próprio marketplace (selo 🏬).'
           : ('Nenhum card pode ir no lote: ' + (linhaFull + linhasPulados).replace(/\n/g, ' ').trim()), 'err');
         return;
       }
@@ -409,7 +409,7 @@
         '➕ LANÇAR POR NF\n\n' +
         'Cole os números das NFs de VENDA (série 1), separados por espaço, vírgula ou linha.\n' +
         'Quantas quiser — vao em levas de 15, com progresso. Exemplo: 74241, 74655 74702\n\n' +
-        'Guardas automáticas: NF já lançada é pulada · série 2 (FULL) é recusada.'
+        'Guardas automáticas: NF já lançada é pulada · NF do FULL (série diferente de 1) é recusada.'
       );
       if (!entrada) return;
 
