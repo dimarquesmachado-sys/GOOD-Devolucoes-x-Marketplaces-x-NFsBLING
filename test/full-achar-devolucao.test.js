@@ -95,6 +95,37 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     // 5) varreu tudo e de fato nao tem serie 2: ai sim 404
     r = await cenario(arq, { paginas: [mais9], detalhes: Object.fromEntries(mais9.map((x) => [x.id, Object.assign({}, x, { serie: '1' })])) })();
     ok(r.status === 404 && /Nenhuma NF de entrada serie 2/.test(r.corpo.erro), '  varredura completa sem serie 2: 404 de verdade');
+
+    // ── b809 (V-24) — a resposta fala da serie DO CARD e do que a busca fez de fato.
+    // Caso (dono, 27/11, AMB): venda do Full da Shopee (serie 5). O card dizia "FULL · SERIE 5" e o Achar respondia
+    // "Nenhuma NF de entrada serie 2 ... (1 candidata(s), 0 conferida(s))", com a dica "nenhuma bateu por nome nem por
+    // valor". A BUSCA procurou a serie 5 (a certa); o TEXTO e que estava cravado na serie do Full do ML — e a dica negava
+    // a candidata que a propria resposta contava.
+    const cardS5 = { nf_chave: chave(5, 108), nf_serie: '5', nf_data_emissao: '2026-08-04T10:00:00-03:00', buyer_nome: 'Carla Souza Prado', produto_valor_unit: 99.9, produto_qtd: 1, produto_sku: 'LUM1' };
+    const parecida = (id, n, extra) => Object.assign({ id, numero: String(n), dataEmissao: '2026-09-01', contato: { nome: 'Carla Souza Prado' }, valorNota: 50 }, extra || {});
+    // 12) a unica parecida e de OUTRA serie, e a chave da lista ja revela: sai antes do detalhe
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('S2', 60001, { chaveAcesso: chave(2, 60001) })]], detalhes: {} })();
+    ok(r.status === 404 && /Nenhuma NF de entrada serie 5 /.test(r.corpo.erro) && !/serie 2/.test(r.corpo.erro), '⚠️ V-24: card do Full serie 5 — a resposta diz "serie 5", a serie que a busca procurou (era "serie 2" cravado): ' + String(r.corpo.erro).slice(0, 60));
+    ok(r.corpo.diag && r.corpo.diag.candidatas === 1 && /outra serie/.test(r.corpo.diag.dica) && /serie 5/.test(r.corpo.diag.dica) && !/nenhuma bateu/.test(r.corpo.diag.dica), '⚠️ V-24: 1 parecida de outra serie — a dica diz isso (dizia "nenhuma bateu por nome nem por valor", com 1 candidata contada): ' + (r.corpo.diag && r.corpo.diag.dica));
+    // 13) a parecida vem SEM chave na lista; e o detalhe que revela a outra serie
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('S3', 60002)]], detalhes: { S3: parecida('S3', 60002, { serie: '2', chaveAcesso: chave(2, 60002), itens: [] }) } })();
+    ok(r.status === 404 && /outra serie/.test(r.corpo.diag.dica) && !/serie 2/.test(r.corpo.erro + r.corpo.diag.dica), '  V-24: outra serie descoberta so no detalhe — mesma dica, e nenhum "serie 2" no texto');
+    // 14) parecida da serie CERTA, so o nome bate (valor diferente, sem XML): nao e "outra serie", e falta de prova
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('S5', 700, { chaveAcesso: chave(5, 700) })]], detalhes: { S5: parecida('S5', 700, { serie: '5', chaveAcesso: chave(5, 700), itens: [] }) } })();
+    ok(r.status === 404 && !r.gravado.nf_devolucao_id_bling && /prova/.test(r.corpo.diag.dica) && /serie 5/.test(r.corpo.diag.dica) && !/outra serie/.test(r.corpo.diag.dica), '⚠️ V-24: nota da serie certa sem prova da venda — a dica diz que faltou prova (dizia "nenhuma era serie 2"): ' + r.corpo.diag.dica);
+    // 15) uma de outra serie + uma da serie certa sem prova: nao da pra dizer que "todas eram de outra serie"
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('S2', 60001, { chaveAcesso: chave(2, 60001) }), parecida('S5', 700, { chaveAcesso: chave(5, 700) })]], detalhes: { S5: parecida('S5', 700, { serie: '5', chaveAcesso: chave(5, 700), itens: [] }) } })();
+    ok(r.status === 404 && r.corpo.diag.candidatas === 2 && /prova/.test(r.corpo.diag.dica) && !/outra serie/.test(r.corpo.diag.dica), '  V-24: uma de outra serie + uma da certa sem prova — a dica e a da prova');
+    // 15b) parecida SEM serie nenhuma (rascunho, sem chave): nao e "outra serie" — e so mais uma sem prova
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('R1', 0)]], detalhes: { R1: parecida('R1', 0, { itens: [] }) } })();
+    ok(r.status === 404 && /prova/.test(r.corpo.diag.dica) && !/outra serie/.test(r.corpo.diag.dica), '  V-24: parecida sem serie nenhuma (rascunho) — a dica nao afirma "outra serie": ' + r.corpo.diag.dica);
+    // 16) ninguem parecido: a dica de sempre continua
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[lista(1)]], detalhes: {} })();
+    ok(r.status === 404 && r.corpo.diag.candidatas === 0 && /nenhuma bateu por nome nem por valor/.test(r.corpo.diag.dica), '  V-24: nenhuma parecida — "nenhuma bateu por nome nem por valor", como era');
+    // 17) e a busca em si acha a nota da serie 5 quando ela esta no Bling (nome + valor)
+    const notaS5 = parecida('SH1', 777, { serie: '5', chaveAcesso: chave(5, 777), valorNota: 99.9, itens: [{ codigo: 'LUM1' }] });
+    r = await cenario(arq, { regExtra: cardS5, paginas: [[parecida('SH1', 777, { valorNota: 99.9, chaveAcesso: chave(5, 777) }), parecida('S2', 60001, { valorNota: 99.9, chaveAcesso: chave(2, 60001) })]], detalhes: { SH1: notaS5 } })();
+    ok(r.status === 200 && r.corpo.ok && r.corpo.nf_devolucao_numero === '777' && r.gravado.nf_devolucao_id_bling === 'SH1', '⚠️ V-24: com a NF de entrada serie 5 no Bling, o Achar vincula ela — e nao a de mesmo nome e valor da serie 2 (status ' + r.status + ')');
   }
   const fs = require('fs');
   for (const arq of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js']) {

@@ -447,7 +447,7 @@
   <script src="js-AMB/painel-bridge.js?v=b720"></script>
   <script src="js-AMB/painel-recados.js?v=b682"></script>
   <script src="js-AMB/painel-sem-retorno.js?v=b682"></script>
-  <script src="js-AMB/painel-gerar-nf.js?v=b720"></script>
+  <script src="js-AMB/painel-gerar-nf.js?v=b809"></script>
   <script src="js-AMB/painel-nf-depara.js?v=b684"></script>
   <script src="js-AMB/painel-reclamacao.js?v=b684"></script>
   <script src="js-AMB/painel-espreita.js?v=b687"></script>
@@ -1024,7 +1024,7 @@
               }
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
-                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml((d.dep_sugerido || d.status || d.tipo) || '')}', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
@@ -1077,7 +1077,7 @@
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
-                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'problema', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
@@ -1161,7 +1161,7 @@
               <!-- b490 - pedido do dono (02/10): divergente (envio errado) tambem gera a NF de devolucao;
                    o modal abre no DEFEITOS (o produto que voltou nao e o vendido — vai pra conferencia). -->
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
-                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                ? `${linkEmissorFull(d)}<button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="${tituloAcharFull(d)}">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${jsArg(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'divergente', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
@@ -2270,7 +2270,7 @@
         const r = await fetch(`${window.APP_BASE || ''}/api/admin/full-vincular/${id}`, { method: 'POST' });
         const d = await r.json();
         if (d.ok) {
-          toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
+          toast(`NF de devolução nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');   // b809 (V-24): dizia "Devolução ML" em qualquer Full
           carregar();
           return { ok: true, status: r.status };
         } else {
@@ -2371,6 +2371,19 @@
       if (direto) return direto;
       var ch = String(d.nf_chave || '').replace(/\D/g, '');
       return ch.length === 44 ? (ch.substr(22, 3).replace(/^0+/, '') || '?') : '?';
+    }
+    /* b809 (V-24) - dono, 27/11 (AMB, venda do Full da SHOPEE, serie 5): o card dizia "FULL · SERIE 5" e, ao lado, o
+       botao 🏬 FULL abria o EMISSOR DO MERCADO LIVRE com o numero do pedido da Shopee (nao leva a nada) e o "Achar" se
+       apresentava como "serie 2 que o ML emitiu". Esses textos nasceram quando so existia o Full do ML. Agora o link do
+       emissor so aparece em venda do ML, e a serie e o canal saem DO CARD (serieFull e nomeMarketplaceFull, as do aviso). */
+    function linkEmissorFull(d) {
+      if (nomeMarketplaceFull(d) !== 'Mercado Livre') return '';
+      return '<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/' + encodeURIComponent(String(d.order_id || '')) + '/faturas" target="_blank"' +
+        ' title="Venda FULL (série ' + escapeHtml(serieFull(d)) + '): a NF de devolução é emitida pelo PRÓPRIO Mercado Livre. NÃO gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a>';
+    }
+    function tituloAcharFull(d) {
+      var mkt = nomeMarketplaceFull(d);
+      return 'Procura no Bling a NF de ENTRADA série ' + escapeHtml(serieFull(d)) + ' desta devolução (emissor: ' + (mkt === 'marketplace' ? 'o próprio marketplace' : mkt) + ') e vincula ao card';
     }
     function avisoFullHtml(d) {
       var mkt = nomeMarketplaceFull(d);

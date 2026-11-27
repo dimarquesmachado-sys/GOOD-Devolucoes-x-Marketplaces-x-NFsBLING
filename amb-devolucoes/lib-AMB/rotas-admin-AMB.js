@@ -398,6 +398,9 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       const sL = serieDaLista(candidatos[ci]);
       if (sL && (sL === '1' || (serieReg && sL !== serieReg))) candidatos.splice(ci, 1);
     }
+    // b809 (V-24): quantas parecidas sairam por serem de OUTRA serie (aqui pela chave da lista; mais abaixo, pelo detalhe) —
+    // a dica do 404 diz o que a busca fez de fato, em vez de "nenhuma bateu" com candidata contada
+    let foraDaSerie = totalCandidatas - candidatos.length;
     candidatos.sort((a, b) => (forcaPrevia(b) - forcaPrevia(a)) || (new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0)));
     let naoVerificadas = 0;
     // Codex #406 (P2): o que o corte de 15 deixa de fora nao foi lido — sem achado, isso nunca vira 404 definitivo
@@ -472,7 +475,7 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       //
       // `serieReg` e a serie do card (da venda). A entrada tem que bater.
       const serieOk = !!sNF && sNF !== '1' && (!serieReg || sNF === serieReg);
-      if (!serieOk) continue;
+      if (!serieOk) { if (sNF) foraDaSerie++; continue; }   // sem serie nenhuma (rascunho) nao e "outra serie"
       const p = await pontuar(nfc);
       if (p.xmlFalhou) naoVerificadas++;      // XML que nao veio pode ser justamente a prova
       /* Codex #406 (P1): SKU + um pedaco de nome nao prova que e a devolucao DESTA venda (Joao Silva x
@@ -496,7 +499,7 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
         .eq('id', req.params.id);
       if (errUpd) return res.status(500).json({ ok: false, erro: 'Achei a NF ' + nf.numero + ' mas falhou ao gravar: ' + errUpd.message });
 
-      console.log(`[FULL-VINCULAR] ${req.params.id}: entrada serie 2 nº ${nf.numero} (id ${nf.id})`);
+      console.log(`[FULL-VINCULAR] ${req.params.id}: entrada serie ${serieReg} nº ${nf.numero} (id ${nf.id})`);
       return res.json({
         ok: true,
         nf_devolucao_numero: String(nf.numero || ''),
@@ -515,7 +518,9 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
     }
     return res.status(404).json({
       ok: false,
-      erro: `Nenhuma NF de entrada serie 2 correspondente na janela ${ini}..${fim} (${totalCandidatas} candidata(s), ${Math.min(candidatos.length, 15)} conferida(s)). Se ainda nao importou o XML no Bling, a Toolbox traz sozinha quando a vigia achar.`,
+      // b809 (V-24): a serie e a DO CARD (a que a busca procurou). Era "serie 2" cravado, do tempo em que so havia o
+      // Full do ML — num card do Full da Shopee (serie 5) o dono leu "serie 2" e concluiu que a busca olhava o canal errado.
+      erro: `Nenhuma NF de entrada serie ${serieReg} correspondente na janela ${ini}..${fim} (${totalCandidatas} candidata(s), ${Math.min(candidatos.length, 15)} conferida(s)). Se ainda nao importou o XML no Bling, a Toolbox traz sozinha quando a vigia achar.`,
       // b141 - DIZ O QUE FEZ. Antes so avisava que nao achou, e nao dava pra
       // saber se a janela estava curta, se o nome nao bateu, se o valor nao
       // bateu, ou se o Bling nem devolveu notas de entrada.
@@ -531,9 +536,11 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
         },
         dica: varridas === 0
           ? 'O Bling nao devolveu NENHUMA nota de entrada nessa janela - confira o periodo e o acesso do token'
-          : (candidatos.length === 0
+          : (totalCandidatas === 0
               ? 'Varri as notas mas nenhuma bateu por nome nem por valor - confira o valor do card e o nome na nota'
-              : 'Havia candidatas, mas nenhuma era serie 2'),
+              : (foraDaSerie >= totalCandidatas
+                  ? 'Havia ' + totalCandidatas + ' nota(s) parecida(s) por nome ou valor, mas de outra serie - nenhuma da serie ' + serieReg + ', que e a da NF de venda deste card'
+                  : 'Havia nota(s) parecida(s) por nome ou valor, mas nenhuma com prova de que e a devolucao desta venda: precisa ser da serie ' + serieReg + ' e ter o XML dela citando a NF de venda, ou o valor junto com o nome ou o SKU')),
       },
     });
   } catch (e) {

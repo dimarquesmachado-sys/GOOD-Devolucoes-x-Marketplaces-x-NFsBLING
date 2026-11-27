@@ -627,7 +627,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.322 (b808: V-23 — bipou a proxima logo depois de gravar: o cartao da venda nova nao some mais)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.323 (b809: V-24 — o Achar do Full fala a serie do card; o botao FULL so abre o emissor do ML em venda do ML)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
